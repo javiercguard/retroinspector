@@ -17,7 +17,7 @@ mamba create -n snakemake snakemake
 After that, clone this repository:
 
 ```
-git clone url
+git clone https://github.com/javiercguard/retrosnake
 ```
 
 That's it.
