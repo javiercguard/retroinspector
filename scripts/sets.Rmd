@@ -1,0 +1,70 @@
+```{r}
+library(glue)
+gluecat = function (...) {
+  glue(...) %>% cat(., "\n\n")
+}
+formatDecimal = function (x) {
+  format(x, digits = 2, nsmall = 1, big.mark = "\u202F", trim = T)
+}
+formatN = function (x) {
+  format(x, digits = 2, nsmall = 1, big.mark = "\u202F", trim = T)
+}
+```
+
+```{r results="asis"}
+cat("\n\n# Found in other datasets\n\n")
+sets = snakemake@input[["otherSets"]]
+ownSet = snakemake@params[["ownSet"]]
+setIds = sets %>% stri_match_last_regex(".*/.*\\.vs\\.(.*)\\.vcf") %>% .[, 2]
+setTitles = setIds %>% R.utils::capitalize()
+for (i in 1:length(sets)) {
+  set = sets[i]
+  setTitle = setTitles[i]
+  setId = setIds[i]
+  versus = fread(set, skip = "#CHROM")
+  versus[
+  ,  paste0(c("length.", "pos."), ownSet) := .SD[[ownSet]] %>%
+    stri_split_fixed(pattern = ":") %>%
+    lapply(`[`, y = c(3, 11)) %>% transpose()
+  ]
+  versus[
+  ,  paste0(c("length.", "pos."), setId) := .SD[[setId]] %>% stri_split_fixed(pattern = ":") %>% lapply(`[`, y = c(3, 11)) %>% transpose()
+  ]
+  versus[, SUPP := sub(x = INFO, pattern = ".*SUPP=([^;\t]+);.*", replacement = "\\1", perl = T) %>% as.numeric()]
+  # These will introduce NA by coercion: "." -> NA
+  versus[, paste0("length.", ownSet) := as.numeric(.SD[[paste0("length.", ownSet)]])]
+  versus[, paste0("pos.", ownSet) := sub(.SD[[paste0("pos.", ownSet)]], pattern = ".*_([^_]+)_[^_]+$", replacement = "\\1") %>% as.numeric()]
+  versus[, paste0("length.", setId) := as.numeric(.SD[[paste0("length.", setId)]])]
+  versus[, paste0("pos.", setId) := sub(.SD[[paste0("pos.", setId)]], pattern = ".*_([^_]+)_[^_]+$", replacement = "\\1") %>% as.numeric()]
+  versus[, seqId := sub(pattern = ".*:(seq[[:digit:]]+|\\.):.*", replacement = "\\1", x = .SD[[ownSet]])]
+  versus[SUPP == 2, `:=`(
+    lendiff = abs(.SD[[paste0("length.", ownSet)]] - .SD[[paste0("length.", setId)]]),
+    posdiff = abs(.SD[[paste0("pos.", ownSet)]] - .SD[[paste0("pos.", setId)]])
+    )]
+  insInSet = ioi[seqId %in% versus[SUPP == 2]$seqId, nomatch = NULL]
+  
+  gluecat("\n\n## Comparison against {setTitle}")
+  gluecat('\n\n We found {(versus[SUPP == 2] %>% nrow()) %>% formatN()} Alu insertions in common with our datasets. This dataset\'s study was focused on Alu insertions, so most shared insertions ({((insInSet[repeat.subclass == "Alu"] %>% nrow()) / (insInSet %>% nrow()) * 100) %>% formatDecimal()}\\%) were annotated by RepeatMasker as _Alu_ in our data.')
+  comparisonTable = insInSet[
+  , .(`Number of\nshared insertions` = .N), by = "repeat.subclass"
+  ] %>% merge(tableFamilies[`Repeat\nfamily` != "Total", 
+    .(`Repeat\nfamily`, repeat.subclass = `Repeat\nsubfamily`)], by = "repeat.subclass", all = F)
+  setnames(comparisonTable, "Repeat\nfamily", "repeat.class")
+  setcolorder(comparisonTable, c(3, 1, 2))
+  comparisonTable
+  comparisonTable = comparisonTable[order(repeat.class, tolower(repeat.subclass))]
+  comparisonTable %>% setnames(c("repeat.subclass", "repeat.class"), c("Repeat\nsubfamily", "Repeat\nfamily"))
+  comparisonTable %>% 
+    flextable::flextable() %>% 
+    flextable::theme_booktabs() %>% 
+    flextable::merge_v(j = c("Repeat\nfamily")) %>%
+    flextable::border_inner_h(border = flextable::fp_border_default()) %>%
+    flextable::fix_border_issues() %>% 
+    flextable::align(align = "center", part = "all") %>% 
+    flextable::autofit() %>% 
+    flextable::width("Repeat\nsubfamily", width = 1) %>% 
+    flextable::set_caption(glue("Insertions shared with {setTitle}")) %>% 
+    flextable::flextable_to_rmd()
+  gluecat('<br>Using a ±60 bp as the maximum difference for coordinates, the mean difference in coordinates for matching insertions was {(versus[SUPP == 2]$posdiff %>% mean()) %>% formatDecimal()} ± {(versus[SUPP == 2]$posdiff %>% sd()) %>% formatDecimal()} bp, while for length difference it was {(versus[SUPP == 2]$lendiff %>% mean()) %>% formatDecimal()} ± {(versus[SUPP == 2]$lendiff %>% sd()) %>% formatDecimal()} bp.')
+}
+```

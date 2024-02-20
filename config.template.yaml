@@ -1,0 +1,28 @@
+# Species and genome
+species: "homo_sapiens"
+referenceGenome: "/path/to/GCA_000001405.15_GRCh38_no_alt_analysis_set.fa"
+referenceRepeats: "/path/to/repeatsReferenceTE.bed.gz" # Must be tabix indexed
+
+# Paths
+# dataPath: "" 
+outputPath: "/path/to/output/dir" # Dont't include the trailing "/"
+allPrefix: "template"
+
+# Parameters
+minimumReadSupport: 3
+insertionDistanceLimitIntraPatient: 20
+insertionDistanceLimitInterPatient: 20
+survivorInsertionDistanceLimitIntraPatient: 10
+survivorInsertionDistanceLimitInterPatient: 500
+
+# Keep certain files
+keepRds: True
+
+samples:
+  'S1': /path/to/S1.merged.fastq
+  'S2': /path/to/S2.merged.fastq
+
+comparisons:
+  [
+   [S2, S1],
+  ]

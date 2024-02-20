@@ -1,0 +1,303 @@
+---
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+editor_options:
+  chunk_output_type: console
+output:
+  html_document:
+    highlight: tango
+    number_sections: no
+    theme: default
+    toc: yes
+    toc_depth: 2
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+---
+
+```{css, echo=F}
+div.main-container {
+  max-width: 90vw;
+}
+.note {
+  display: block;
+  padding: 9.5px;
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.42857143;
+  color: #333;
+  background-color: #f5f5f5;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+```
+
+```{r setup,include=F,eval=T}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = F)
+thinSpace = "\u202F"
+is.wholenumber <- function(x, tol = .Machine$double.eps^0.5)  {
+  if (!is.numeric(x)) {return(F)}
+  if (is.nan(x) | is.na(x)) {return(T)} # why not, right?
+  abs(x - round(x)) < tol
+  }
+inline_hook <- function(x) {
+  if (!is.wholenumber(x)) {
+    format(x, digits = 2, nsmall = 1, big.mark = "\u202F")
+  } 
+  else if (is.numeric(x)) {
+    if (is.nan(x)) "NaN (division by zero?)"
+    else format(x, nsmall = 0, big.mark = "\u202F")
+  }
+  else x
+}
+knitr::knit_hooks$set(inline = inline_hook)
+
+vectorToText = function (v) {
+  v = paste0(v, collapse = ", ")
+  v %>% {if (stri_count_fixed(., ",") >= 2) 
+    stri_replace_last(., fixed = ', ', ', and ') 
+  else stri_replace_last(., fixed = ', ', ' and ')}
+}
+ 
+flextable::set_flextable_defaults(big.mark = thinSpace)
+
+totalize = function (dt) {
+  totalRow = dt %>%
+    lapply(function (x) {
+      if (!is.numeric(x)) {
+        return("-")
+      }
+      else
+        return(sum(x))
+    })
+  totalRow[[1]] = "Total"
+  list(dt, totalRow) %>%
+    rbindlist() %>%
+    return()
+}
+```
+
+```{r data}
+if (F) {
+  saveRDS(snakemake, "~/retropip0/snk5.rds")
+  q()
+  setwd("~/ontology/proj/twins")
+  snakemake = readRDS("~/ontology/retropip0/snk5.rds")
+}
+```
+
+```{r}
+samples = snakemake@params$samples
+soi = snakemake@params$soi
+```
+
+
+---
+title: "Comparison of TE insertions found on samples `r soi[1]` and `r soi[[2]]`"
+---
+
+```{r libraries}
+library(magrittr)
+library(data.table)
+library(stringi)
+```
+
+```{r}
+chrs = paste0("chr", c(1:22, "X", "Y")) # Human chromosomes used to filter out Unknown and Random fragments
+class1 = c("Retroposon", "SINE", "LINE", "LTR") # Families of class I elements
+class2 = c("DNA") # Class II elements
+```
+
+# Introduction
+
+<div class="note">
+__Note__: Insertion ids mentioned in this report are for internal use (not linked to any database) and will change if the pipeline is re-run.
+</div>
+
+## TE insertions in common and not in common
+
+<div class="note">
+__Note__: To ease readability, insertions present in one sample only (or not in common, as shown in the title above) will be referred as _unshared_ insertions.
+</div>
+
+```{r}
+ins = readRDS(snakemake@input[["observedMafTable"]])
+indexes = soi %>% lapply(function (x) {
+  which(samples == x)
+}) %>% unlist()
+insoiMask = ins$genotype %>% lapply(function (x) any(x[indexes] > 0)) %>% unlist()
+insoi = ins[insoiMask]
+insoi[, genotype := genotype %>% lapply(function (x) x[indexes])]
+insoi[, SUPP_trusty := SUPP_mask_trusty %>% lapply(function (x) x[indexes]) %>% lapply(sum) %>% unlist()]
+insoi[, SUPP_min3 := SUPP_mask_min3 %>% lapply(function (x) x[indexes]) %>% lapply(sum) %>% unlist()]
+```
+
+```{r}
+comp = insoi[SUPP_trusty > 0, .N, by = .(SUPP_trusty)][order(SUPP_trusty)] %>% 
+  totalize()
+comp %>% copy() %>% 
+  setnames(c("Present in N samples", "Number of insertions")) %>% 
+  flextable::flextable() %>% 
+  flextable::theme_booktabs() %>% flextable::align(align = "center", part = "all") %>% 
+  flextable::fix_border_issues()
+compD = comp$N
+```
+
+Out of `r compD[length(compD)]` unique TE insertions, `r ifelse(2 %in% comp$SUPP_trusty, comp[SUPP_trusty == 2]$N, 0)` are found in both samples, while `r ifelse(1 %in% comp$SUPP_trusty, comp[SUPP_trusty == 1]$N, 0)` are found only in one of them, __when considering only strict calls__.
+
+### Closer examination
+
+Some of the unshared insertions may be actually present on both samples. If we check also the calls that did not pass the strict criterion, we may alleviate this issue:
+
+```{r}
+comp = insoi[SUPP_trusty > 0, .N, by = .(SUPP_min3)][order(SUPP_min3)] %>% 
+  totalize()
+copy(comp) %>% 
+  setnames(c("Present in N samples", "Number of insertions")) %>% 
+  flextable::flextable() %>% 
+  flextable::theme_booktabs() %>% flextable::align(align = "center", part = "all") %>% 
+  flextable::fix_border_issues()
+compD2 = comp$N
+# insoi[SUPP_min3 == 1 & SUPP_trusty == 0 & SUPP_geno > 0] %>% nrow()
+```
+
+# Unshared insertions
+
+After this second examination, `r comp[SUPP_min3 == 1]$N` are reported as present in one sample only.
+
+## Unshared insertions by class
+
+```{r}
+unshared = insoi[SUPP_trusty > 0 & SUPP_min3 == 1]
+unshared[, .N, by = .(repeat.class, repeat.subclass)][, superclass := fifelse(repeat.class == "DNA", "Class I", "Class II")] %>% setcolorder("superclass") %>% totalize() %>% 
+  setnames(c("Class", "Family", "Subfamily", "Number of insertions")) %>% 
+  .[order(Class, Family)] %>% 
+  flextable::flextable() %>% 
+  flextable::theme_booktabs() %>% flextable::align(align = "center", part = "all") %>% 
+  flextable::merge_v(j = c("Family", "Class")) %>%
+  flextable::border_inner_h(border = flextable::fp_border_default()) %>%
+  flextable::fix_border_issues()
+```
+
+## Annotation of unshared insertions
+
+```{r}
+annotatedInsertionsMin3 = readRDS(snakemake@input[["annotatedInsertionsMin3"]])
+annot = annotatedInsertionsMin3[seqId %chin% unshared$seqId, .(seqnames, start, seqId, name, repeat.subclass, repeat.class, annot.gene_id, annot.symbol, annot.class, annot.subclass)][annot.class == "genes" & annot.subclass != "intergenic" & !is.na(annot.gene_id)][, .SD[1], by = .(seqId, annot.subclass, annot.symbol)]
+```
+
+In the table below is shown the gene annotation for unshared insertions.
+<details><summary>Click to show table with `r nrow(annot)` rows.</summary>
+<div class="note">__Note__: Annotation type is as described by R package annotatr: "cds": coding sequences, "promoter": regulatory region up to 1kb uptream, "1to5kb": regulatory region between 1 and 5kb upstream, "genes" and "introns": literal meaning.</div>
+```{r}
+annot[, .(
+  Position = paste0(seqnames, ":", start %>% format(big.mark = thinSpace, trim = T)),
+  seqId, annot.symbol, annot.gene_id, annot.subclass
+)][stringi::stri_order(Position, numeric = T)] %>% 
+  setnames(c("Position", "INS Id", "Gene symbol", "Gene Id", "Annotation type")) %>% 
+  flextable::flextable() %>% 
+  flextable::theme_booktabs() %>% flextable::align(align = "center", part = "all") %>% 
+  flextable::merge_v(j = c("Position", "INS Id")) %>%
+  flextable::border_inner_h(border = flextable::fp_border_default()) %>%
+  flextable::fix_border_issues()
+```
+</details>
+
+## Full list
+
+This is the list of insertions found in only one of the two samples, alongside its allele frequency inside the whole population (all the cases in your pipeline) and which sample it was found in.
+
+<details><summary>Click to show table with `r nrow(unshared)` rows.</summary>
+```{r}
+unshared[,
+         .(
+           Position = paste(seqnames, start %>% format(big.mark = thinSpace, trim = T), sep = ":"),
+           seqId,
+           `Length (bp)` = SVLEN,
+           Type = paste0(repeat.class, " (", name, ")"),
+           `Population allele frequency` = maf,
+           `Present in sample` = genotype %>%
+             lapply(function (x)
+               x %>%
+                 as.logical() %>%
+                 soi[.]) %>%
+             unlist()
+         )][stringi::stri_order(Position, numeric = T)] %>% 
+  flextable::flextable() %>% 
+  flextable::autofit() %>% 
+  flextable::theme_booktabs() %>% 
+  flextable::align_nottext_col(align = "center")
+```
+</details>
+
+# Shared insertions
+
+With the same methodology than the one used for unshared insertions (checking also for calls that did not pass the strict criterion), `r ifelse(2 %in% comp$SUPP_min3, comp[SUPP_min3 == 2]$N, 0)` are reported as shared between both samples.
+
+## Shared insertions by class
+
+```{r}
+shared = insoi[SUPP_trusty > 0 & SUPP_min3 == 2]
+shared[, .N, by = .(repeat.class, repeat.subclass)][, superclass := fifelse(repeat.class == "DNA", "Class I", "Class II")] %>% setcolorder("superclass") %>% totalize() %>% 
+  setnames(c("Class", "Family", "Subfamily", "Number of insertions")) %>% 
+  .[order(Class, Family)] %>% 
+  flextable::flextable() %>% 
+  flextable::theme_booktabs() %>% flextable::align(align = "center", part = "all") %>% 
+  flextable::merge_v(j = c("Family", "Class")) %>%
+  flextable::border_inner_h(border = flextable::fp_border_default()) %>%
+  flextable::fix_border_issues()
+```
+
+## Annotation of shared insertions
+
+```{r}
+annotatedInsertionsMin3 = readRDS(snakemake@input[["annotatedInsertionsMin3"]])
+annot = annotatedInsertionsMin3[seqId %chin% shared$seqId, .(seqnames, start, seqId, name, repeat.subclass, repeat.class, annot.gene_id, annot.symbol, annot.class, annot.subclass)][annot.class == "genes" & annot.subclass != "intergenic" & !is.na(annot.gene_id)][, .SD[1], by = .(seqId, annot.subclass, annot.symbol)]
+```
+
+In the table below is shown the gene annotation for shared insertions.
+<details><summary>Click to show table with `r nrow(annot)` rows.</summary>
+<div class="note">__Note__: Annotation type is as described by R package annotatr: "cds": coding sequences, "promoter": regulatory region up to 1kb uptream, "1to5kb": regulatory region between 1 and 5kb upstream, "genes" and "introns": literal meaning.</div>
+```{r}
+annot[, .(
+  Position = paste0(seqnames, ":", start %>% format(big.mark = thinSpace, trim = T)),
+  seqId, annot.symbol, annot.gene_id, annot.subclass
+)][stringi::stri_order(Position, numeric = T)] %>% 
+  setnames(c("Position", "INS Id", "Gene symbol", "Gene Id", "Annotation type")) %>% 
+  flextable::flextable() %>% 
+  flextable::theme_booktabs() %>% flextable::align(align = "center", part = "all") %>% 
+  flextable::merge_v(j = c("Position", "INS Id")) %>%
+  flextable::border_inner_h(border = flextable::fp_border_default()) %>%
+  flextable::fix_border_issues()
+```
+</details>
+
+## Full list
+
+This is the list of insertions found shared between both samples, alongside its allele frequency inside the whole population (all the cases in your pipeline) and which sample it was found in.
+
+<details><summary>Click to show table with `r nrow(shared)` rows.</summary>
+```{r}
+shared[,
+         .(
+           Position = paste(seqnames, start %>% format(big.mark = thinSpace, trim = T), sep = ":"),
+           seqId,
+           `Length (bp)` = SVLEN,
+           Type = paste0(repeat.class, " (", name, ")"),
+           `Population allele frequency` = maf,
+           `Present in sample` = genotype %>%
+             lapply(function (x)
+               x %>%
+                 as.logical() %>%
+                 soi[.]) %>%
+             unlist()
+         )][stringi::stri_order(Position, numeric = T)] %>% 
+  flextable::flextable() %>% 
+  flextable::autofit() %>% 
+  flextable::theme_booktabs() %>% 
+  flextable::align_nottext_col(align = "center")
+```
+</details>
+
+
+
+

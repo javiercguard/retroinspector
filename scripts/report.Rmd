@@ -1,0 +1,911 @@
+---
+title: "TE analysis report"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+editor_options:
+  chunk_output_type: console
+output:
+  html_document:
+    highlight: tango
+    number_sections: yes
+    theme: default
+    toc: yes
+    toc_depth: 2
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+---
+
+```{css, echo=F}
+div.main-container {
+  max-width: 90vw;
+}
+.note {
+  display: block;
+  padding: 9.5px;
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.42857143;
+  color: #333;
+  background-color: #f5f5f5;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+```
+
+```{r setup,include=F,eval=T}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = F)
+thinSpace = "\u202F"
+is.wholenumber <- function(x, tol = .Machine$double.eps^0.5)  {
+  if (!is.numeric(x)) {return(F)}
+  if (is.nan(x) | is.na(x)) {return(T)} # why not, right?
+  abs(x - round(x)) < tol
+  }
+inline_hook <- function(x) {
+  if (!is.wholenumber(x)) {
+    format(x, digits = 2, nsmall = 1, big.mark = "\u202F")
+  } 
+  else if (is.numeric(x)) {
+    if (is.nan(x)) "NaN (division by zero?)"
+    else format(x, nsmall = 0, big.mark = "\u202F")
+  }
+  else x
+}
+knitr::knit_hooks$set(inline = inline_hook)
+
+vectorToText = function (v) {
+  v = paste0(v, collapse = ", ")
+  v %>% {if (stri_count_fixed(., ",") >= 2) 
+    stri_replace_last(., fixed = ', ', ', and ') 
+  else stri_replace_last(., fixed = ', ', ' and ')}
+}
+totalize = function (dt) {
+  totalRow = dt %>%
+    lapply(function (x) {
+      if (!is.numeric(x)) {
+        return("-")
+      }
+      else
+        return(sum(x))
+    })
+  totalRow[[1]] = "Total"
+  list(dt, totalRow) %>%
+    rbindlist() %>%
+    return()
+}
+ 
+flextable::set_flextable_defaults(big.mark = thinSpace)
+```
+
+```{r libraries}
+library(magrittr)
+library(data.table)
+library(stringi)
+library(ggplot2)
+library(patchwork)
+library(qqman)
+```
+
+```{r cutomFacetWrapDefinition}
+scale_override <- function(which, scale) {
+  if(!is.numeric(which) || (length(which) != 1) || (which %% 1 != 0)) {
+    stop("which must be an integer of length 1")
+  }
+  
+  if(is.null(scale$aesthetics) || !any(c("x", "y") %in% scale$aesthetics)) {
+    stop("scale must be an x or y position scale")
+  }
+  
+  structure(list(which = which, scale = scale), class = "scale_override")
+}
+CustomFacetWrap <- ggproto(
+  "CustomFacetWrap", FacetWrap,
+  init_scales = function(self, layout, x_scale = NULL, y_scale = NULL, params) {
+    # make the initial x, y scales list
+    scales <- ggproto_parent(FacetWrap, self)$init_scales(layout, x_scale, y_scale, params)
+    
+    if(is.null(params$scale_overrides)) return(scales)
+    
+    max_scale_x <- length(scales$x)
+    max_scale_y <- length(scales$y)
+    
+    # ... do some modification of the scales$x and scales$y here based on params$scale_overrides
+    for(scale_override in params$scale_overrides) {
+      which <- scale_override$which
+      scale <- scale_override$scale
+      
+      if("x" %in% scale$aesthetics) {
+        if(!is.null(scales$x)) {
+          if(which < 0 || which > max_scale_x) stop("Invalid index of x scale: ", which)
+          scales$x[[which]] <- scale$clone()
+        }
+      } else if("y" %in% scale$aesthetics) {
+        if(!is.null(scales$y)) {
+          if(which < 0 || which > max_scale_y) stop("Invalid index of y scale: ", which)
+          scales$y[[which]] <- scale$clone()
+        }
+      } else {
+        stop("Invalid scale")
+      }
+    }
+    scales
+  }
+)
+facet_wrap_custom <- function(..., scale_overrides = NULL) {
+  # take advantage of the sanitizing that happens in facet_wrap
+  facet_super <- facet_wrap(...)
+  
+  # sanitize scale overrides
+  if(inherits(scale_overrides, "scale_override")) {
+    scale_overrides <- list(scale_overrides)
+  } else if(!is.list(scale_overrides) || 
+            !all(vapply(scale_overrides, inherits, "scale_override", FUN.VALUE = logical(1)))) {
+    stop("scale_overrides must be a scale_override object or a list of scale_override objects")
+  }
+  
+  facet_super$params$scale_overrides <- scale_overrides
+  
+  ggproto(NULL, CustomFacetWrap,
+    shrink = facet_super$shrink,
+    params = facet_super$params
+  )
+}
+chrsLength = c(248956422, 242193529, 198295559, 190214555, 181538259, 170805979,
+               159345973, 145138636, 138394717, 133797422, 135086622, 133275309,
+               114364328, 107043718, 101991189, 90338345, 83257441, 80373285, 58617616,
+               64444167, 46709983, 50818468, 156040895, 57227415)
+chrScales = lapply(1:length(chrsLength), 
+                   function (i) {
+                     scale_override(i, scale_x_continuous(limits = c(1, chrsLength[i])))
+                     })
+```
+
+```{r data}
+if (F) {
+  saveRDS(snakemake, "~/path/snk3.rds")
+  q()
+  setwd("~/path")
+  snakemake = readRDS("~/path/snk3.rds")
+  snk2 = readRDS("~/path/snk2.rds")
+  insertionsBed = readRDS(snakemake@input[["insertionsBed"]])
+}
+allIns = readRDS(snakemake@input[["allIns"]])
+insertionsTable = readRDS(snakemake@input[["insertionsTable"]])
+annotatedInsertionsMin3 = readRDS(snakemake@input[["annotatedInsertionsMin3"]])
+observedMafTable = readRDS(snakemake@input[["observedMafTable"]])
+
+chrs = paste0("chr", c(1:22, "X", "Y")) # Human chromosomes used to filter out Unknown and Random fragments
+class1 = c("Retroposon", "SINE", "LINE", "LTR") # Families of class I elements
+class2 = c("DNA") # Class II elements
+```
+
+<div class="note">
+__Note__: Insertion ids mentioned in this report are for internal use (not linked to any database) and will change if the pipeline is re-run.
+</div>
+
+# General figures
+
+## Filtering criteria
+
+### Lax criterion
+
+<div class="note">
+__Note__: A “unique” insertion is the merged result after the allele-aware merging from both callers for each patient, and then merged across patients. If we were working with SNPs, a "unique" SNP would be, rs123, for example, defined by its position and alternative(s) allele(s). A unique insertion is defined by its position, length, and inserted sequence.
+</div>
+
+The analysis has identified:
+
+- `r allIns[repeat.class %in% c(class1, class2) & repeat.percentage >= 0.85] %>% nrow()` unique TE insertions, which amount to a total of `r allIns[repeat.class %in% c(class1, class2) & repeat.percentage >= 0.85]$SUPP_min3 %>% sum()` occurrences among all samples.
+- With any insertion appearing on `r allIns[repeat.class %in% c(class1, class2) & repeat.percentage >= 0.85]$SUPP_min3 %>% mean()` ± `r allIns[repeat.class %in% c(class1, class2) & repeat.percentage >= 0.85]$SUPP_min3 %>% sd()` samples (median of `r allIns[repeat.class %in% c(class1, class2) & repeat.percentage >= 0.85]$SUPP_min3 %>% median()` occurrences/insertion). 
+- The average insertion count per case is `r allIns[repeat.class %in% c(class1, class2) & repeat.percentage >= 0.85]$SUPP_VEC_min3 %>% strsplit(split = "") %>% lapply(as.numeric) %>% simplify2array() %>% t() %>% apply(., 2, sum) %>% mean()` ± `r allIns[repeat.class %in% c(class1, class2) & repeat.percentage >= 0.85]$SUPP_VEC_min3 %>% strsplit(split = "") %>% lapply(as.numeric) %>% simplify2array() %>% t() %>% apply(., 2, sum) %>% sd()`.
+
+### Strict criterion
+
+The stringent criterion (both callers) has left:
+
+- `r allIns[repeat.class %in% c(class1, class2) & repeat.percentage >= 0.85 & SUPP_trusty > 0] %>% nrow()`
+ TE insertions.
+- A total of `r allIns[repeat.class %in% c(class1, class2) & repeat.percentage >= 0.85 & SUPP_trusty > 0]$SUPP_trusty %>% sum()`  calls across cases.
+- A mean prevalence of `r allIns[repeat.class %in% c(class1, class2) & repeat.percentage >= 0.85 & SUPP_trusty > 0]$SUPP_trusty %>% mean()` ± `r allIns[repeat.class %in% c(class1, class2) & repeat.percentage >= 0.85 & SUPP_trusty > 0]$SUPP_trusty %>% sd()`.
+- The median prevalence is `r allIns[repeat.class %in% c(class1, class2) & repeat.percentage >= 0.85 & SUPP_trusty > 0]$SUPP_trusty %>% median()`.
+- Each sample carries an average of `r allIns[repeat.class %in% c(class1, class2) & repeat.percentage >= 0.85 & SUPP_trusty > 0]$SUPP_VEC_trusty %>% strsplit(split = "") %>% lapply(as.numeric) %>% simplify2array() %>% t() %>% apply(., 2, sum) %>% mean()`  ± `r allIns[repeat.class %in% c(class1, class2) & repeat.percentage >= 0.85 & SUPP_trusty > 0][repeat.percentage >= 0.85 & SUPP_trusty > 0]$SUPP_VEC_trusty %>% strsplit(split = "") %>% lapply(as.numeric) %>% simplify2array() %>% t() %>% apply(., 2, sum) %>% sd()` TE insertions. 
+
+## Genotyping
+
+```{r genotypeVsTrusty, include = F}
+hasAlleleleMask = observedMafTable$genotype %>% 
+  lapply(`>=`, y = 1)
+
+strictWithoutAllelesMask = mapply(function (x, y) {!x & y},
+                                  hasAlleleleMask, observedMafTable$SUPP_mask_trusty,
+                                  SIMPLIFY = F
+)
+strictWithoutAlleles = strictWithoutAllelesMask %>% # was detected by trusty but genotyped as 0/0
+  lapply(as.numeric) %>% lapply(sum) # sum of the cases where it happens per INS
+strictWithFalsePositivesMask = strictWithoutAlleles >= 1
+strictWithFalsePositives = observedMafTable[strictWithFalsePositivesMask]
+# This variables are for the text:
+# There are <<w>> unique INS with all false positives,
+# which amount up to <<W>> occurrences.
+# There were <<w_tick>> unique INS with all false positives that were only found in 1 case.
+w = (strictWithoutAlleles[strictWithFalsePositivesMask] %>% unlist() == strictWithFalsePositives$SUPP_trusty) %>% as.numeric() %>% sum()
+W = strictWithFalsePositives[strictWithoutAlleles[strictWithFalsePositivesMask] %>% unlist() == strictWithFalsePositives$SUPP_trusty]$SUPP_trusty %>% sum()
+if (F) {
+  strictWithFalsePositives[strictWithoutAlleles[strictWithFalsePositivesMask] %>% unlist() == strictWithFalsePositives$SUPP_trusty]$seqId
+  repeats[
+    seqId %in% strictWithFalsePositives[strictWithoutAlleles[strictWithFalsePositivesMask] %>% unlist() == strictWithFalsePositives$SUPP_trusty]$seqId
+  ][annot.class == "genes" & annot.subclass != "intergenic"]$annot.symbol %>% unique() %>% length()
+}
+w_tick = 
+  (strictWithoutAlleles[strictWithFalsePositivesMask] %>% unlist() == strictWithFalsePositives$SUPP_trusty & 
+     strictWithFalsePositives$SUPP_trusty == 1) %>% 
+  as.numeric() %>% sum()
+genotypeBenchmarkTable = data.table(
+  criterion = "Strict",
+  falsePos = nrow(strictWithFalsePositives), 
+  falsePosPercent = nrow(strictWithFalsePositives) / nrow(observedMafTable[SUPP_trusty >= 1]) * 100,
+  occurrences = sum(unlist(strictWithoutAlleles[strictWithFalsePositivesMask])),
+  occurrencesPercent = sum(unlist(strictWithoutAlleles[strictWithFalsePositivesMask])) / sum(observedMafTable$SUPP_trusty) * 100,
+  all0.0 = w,
+  all0.0Occur = W)
+```
+
+- `r nrow(strictWithFalsePositives)` unique insertions that passed the stringent filtering.
+(`r nrow(strictWithFalsePositives) / nrow(observedMafTable[SUPP_trusty >= 1]) * 100`% of the total unique insertions), had at least one occurrence genotyped as 0/0.
+- These amount to `r sum(unlist(strictWithoutAlleles[strictWithFalsePositivesMask]))` total count (`r sum(unlist(strictWithoutAlleles[strictWithFalsePositivesMask])) / sum(observedMafTable$SUPP_trusty) * 100`% of filter-passing occurrences).
+- `r w` of these unique insertions were genotyped as 0/0 for all their occurrences, amounting to 
+`r W` insertion counts. 
+- Of these fully wrong calls, `r w_tick` were only found on a single patient each (`r w_tick / w * 100`% of the 
+`r w`).
+
+```{r genotypeVsMin3, echo = F, include = F}
+allelesWithoutStrictMask =
+  mapply(function (x, y, z) {z >= 1 & x & !y},
+         hasAlleleleMask, observedMafTable$SUPP_mask_trusty, observedMafTable$SUPP_trusty,
+         SIMPLIFY = F
+  )
+allelesWithoutStrict = allelesWithoutStrictMask %>% # was detected by trusty but genotyped as 0/0
+  lapply(as.numeric) %>% lapply(sum) # sum of the cases where it happens per INS
+strictWithFalseNegativesMask = allelesWithoutStrict >= 1
+strictWithFalseNegatives = observedMafTable[strictWithFalseNegativesMask]
+w = (allelesWithoutStrict[strictWithFalseNegativesMask] %>% unlist() >= strictWithFalseNegatives$SUPP_trusty) %>% as.numeric() %>% sum()
+genotypeBenchmarkTable[
+  , `:=`(
+    falseNeg = nrow(strictWithFalseNegatives),
+    falseNegPercent = nrow(strictWithFalseNegatives) / nrow(observedMafTable[SUPP_trusty >= 1]) * 100,
+    falseNegOcc = sum(unlist(allelesWithoutStrict[strictWithFalseNegativesMask])),
+    callsThatPassed = sum(observedMafTable$SUPP_trusty),
+    moreWrongThanRight = w
+  )
+]
+```
+
+- The strict criteria missed calls for `r nrow(strictWithFalseNegatives)` unique insertions (`r nrow(strictWithFalseNegatives) / nrow(observedMafTable[SUPP_trusty >= 1]) * 100`%).
+- These mean a total of `r sum(unlist(allelesWithoutStrict[strictWithFalseNegativesMask]))` occurrences, out of `r sum(observedMafTable$SUPP_trusty)` calls that passed the stringent filter.
+- `r w` unique insertions had more false negative occurrences than positive ones.
+
+The discrepancies between genotyping and the lax filtering is also summarized in the table below.
+
+<div class="note">__Note__: for true/false poitives/negatives, the genotypes have considered the gold standard.</div>
+
+```{r table4, echo = F}
+  # False positives of min3
+  # hasAlleleleMask can be reused
+  min3WithoutAllelesMask = mapply(function (x, y) {!x & y},
+           hasAlleleleMask, observedMafTable$SUPP_mask_min3,
+           SIMPLIFY = F
+           )
+  min3WithoutAlleles = min3WithoutAllelesMask %>% # was detected by min3 but genotyped as 0/0
+     lapply(as.numeric) %>% lapply(sum) # sum of the cases where it happens per INS
+  laxWithFalsePositivesMask = min3WithoutAlleles >= 1
+  laxWithFalsePositives = observedMafTable[laxWithFalsePositivesMask]
+  w = (min3WithoutAlleles[laxWithFalsePositivesMask] %>% unlist() == laxWithFalsePositives$SUPP_min3) %>% as.numeric() %>% sum()
+  # w had all of their min3 supports as false positives
+  W = laxWithFalsePositives[min3WithoutAlleles[laxWithFalsePositivesMask] %>% unlist() == laxWithFalsePositives$SUPP_min3]$SUPP_min3 %>% sum()
+  # They amounted to W counts
+  w_tick = 
+    (min3WithoutAlleles[laxWithFalsePositivesMask] %>% unlist() == laxWithFalsePositives$SUPP_min3 & 
+       laxWithFalsePositives$SUPP_min3 == 1) %>% 
+     as.numeric() %>% sum()
+  # w' of the w had SUPP_min3 == 1, W'% of w
+  # W'%
+  # w' and W' are equal by definition, no point in calculating W'
+  genotypeBenchmarkLax = data.table(
+    criterion = "Lax",
+    falsePos = nrow(laxWithFalsePositives), 
+    falsePosPercent = nrow(laxWithFalsePositives) / nrow(observedMafTable[SUPP_min3 >= 1]) * 100,
+    occurrences = sum(unlist(min3WithoutAlleles[laxWithFalsePositivesMask])),
+    occurrencesPercent = sum(unlist(min3WithoutAlleles[laxWithFalsePositivesMask])) / sum(observedMafTable$SUPP_min3) * 100,
+    all0.0 = w,
+    all0.0Occur = W
+  )
+  
+  # False negatives of min3
+  # hasAlleleleMask can be reused
+  allelesWithoutMin3Mask =
+    mapply(function (x, y, z) {z >= 1 & x & !y},
+           hasAlleleleMask, observedMafTable$SUPP_mask_min3, observedMafTable$SUPP_min3,
+           SIMPLIFY = F
+           )
+  allelesWithoutMin3 = allelesWithoutMin3Mask %>% # was detected by min3 but genotyped as 0/0
+     lapply(as.numeric) %>% lapply(sum) # sum of the cases where it happens per INS
+  laxWithFalseNegativesMask = allelesWithoutMin3 >= 1
+  laxWithFalseNegatives = observedMafTable[laxWithFalseNegativesMask]
+  w = (allelesWithoutMin3[laxWithFalseNegativesMask] %>% unlist() >= laxWithFalseNegatives$SUPP_min3) %>% as.numeric() %>% sum()
+  # w uniques had more false negatives than positives
+  # W = allelesWithoutMin3[laxWithFalseNegativesMask] %>% unlist() %>% sum()
+  # W # First term of Y%, different calculation but not interesting
+  # w' is not interesting
+  genotypeBenchmarkLax[
+  , `:=`(
+    falseNeg = nrow(laxWithFalseNegatives),
+    falseNegPercent = nrow(laxWithFalseNegatives) / nrow(observedMafTable[SUPP_min3 >= 1]) * 100,
+    falseNegOcc = sum(unlist(allelesWithoutMin3[strictWithFalseNegativesMask])),
+    callsThatPassed = sum(observedMafTable$SUPP_min3),
+    moreWrongThanRight = w
+  )]
+  genotypeBenchmarkTable = rbind(genotypeBenchmarkTable, genotypeBenchmarkLax)[,
+    .(
+      Criterion = criterion,
+      `Unique INS with false positives (%)` = paste0(
+        format(falsePos, big.mark = "\u202F"), 
+        "\n(", format(falsePosPercent, digits = 2, nsmall = 1), ")"),
+      `Total false positives (%)` = paste0(
+        format(occurrences, big.mark = "\u202F"), 
+        "\n(", format(occurrencesPercent, digits = 1, nsmall = 1) %>% stri_trim_left() %>% unlist(), ")"),
+      `Unique INS (total) with all false positives` = paste0(all0.0 %>% format(big.mark = "\u202F"), 
+                                     "\n(", all0.0Occur, ")"),
+      `Unique INS with false negatives (%)` = paste0(
+        format(falseNeg, big.mark = "\u202F"), 
+        "\n(", format(falseNegPercent, digits = 2, nsmall = 1) %>% stri_trim_left() %>% unlist(), ")"),
+      `Total false negatives (Total positives)` = paste0(
+        falseNegOcc %>% format(big.mark = "\u202F"), "\n(", callsThatPassed %>% format(big.mark = "\u202F"), ")"),
+      `Unique INS with more false negatives than positives` = moreWrongThanRight
+        
+    )
+  ]
+  genotypeBenchmarkTable %>% flextable::flextable() %>% 
+  flextable::theme_booktabs() %>% flextable::align(align = "center", part = "all") %>% 
+  flextable::border_inner_h(border = flextable::fp_border_default()) %>%
+  flextable::fix_border_issues()
+```
+
+The next sections only take into account insertions that passed the strict criterion on at least one sample, and that were not genotyped as 0/0 on all samples.
+
+```{r}
+allFalsePositivesIds = strictWithFalsePositives[strictWithoutAlleles[strictWithFalsePositivesMask] %>% 
+  unlist() == strictWithFalsePositives$SUPP_trusty]$seqId
+allIns = allIns[repeat.class %in% c(class1, class2) & repeat.percentage >= 0.85 & !seqId %in% allFalsePositivesIds]
+insertionsTable = insertionsTable[!seqId %in% allFalsePositivesIds]
+annotatedInsertionsMin3 = annotatedInsertionsMin3[!seqId %in% allFalsePositivesIds]
+observedMafTable = observedMafTable[!seqId %in% allFalsePositivesIds]
+```
+
+### Allele frequency
+
+```{r results="asis"}
+ubiquitous = observedMafTable[maf == 1]
+if (nrow(ubiquitous) != 0) {
+  cat("\n\n### Ubiquitous TE insertions\n\n")
+  cat("\n\n#### Ubiquitous TE insertions\n\n")
+  cat(paste0(nrow(ubiquitous), " TE insertions were found on all cases in homozygosis.\n\n"))
+  cat(paste0("<details><summary>Click to show table with ", nrow(ubiquitous)," rows.</summary>\n\n"))
+  ubiquitous[
+    , .(Position = paste(seqnames, start %>% format(big.mark = thinSpace, trim = T), sep = ":"),
+        Length = SVLEN,
+        Type = paste0(repeat.class, " (", name, ")"),
+        AF = maf
+        )
+  ] %>% 
+  flextable::flextable() %>% 
+  flextable::autofit() %>%
+  flextable::theme_booktabs() %>% 
+  flextable::align_nottext_col(align = "center") %>%
+  flextable::flextable_to_rmd()
+  cat("</details>\n\n")
+}
+```
+
+<br/>
+
+- `r observedMafTable[maf >= 0.5 & SUPP_trusty > 0] %>% nrow()` TE insertions were found with an AF ≥ 0.5. 
+
+A Manhattan plot of AFs is shown below.
+
+```{r fig.align="center", fig.cap="Allele frequency is shown for insertions for each chromosome. Each dot marks a different insertion."}
+copy = copy(observedMafTable[SUPP_trusty > 0])[, `:=`(seqnames = seqnames %>% as.numeric())]
+qqman::manhattan(
+  copy,
+  chr = "seqnames",
+  bp = "start", 
+  snp = "seqId",
+  p = "maf",
+  logp = F,
+  cex = 0.5,
+  cex.axis = 0.9,
+  ylab = "AF",
+  chrlabs = chrs %>% sub(pattern = "chr(.+)", replacement = "\\1", x = .) %>% .[. %in% as.character(unique(copy$seqnames))]
+)
+```
+
+### Genome distribution
+
+```{r fig.dim=c(14, 8), fig.align="center", fig.cap="A) Unique TE insertions occurences on the genome. B) Gene annotations of TE insertions on the genome. A single TE may be annotated more than once."}
+fig1a = insertionsTable[seqnames %in% chrs & 
+          SUPP_trusty > 0 & 
+          repeat.class %in% c(class1, class2) & 
+          repeat.percentage >= 0.85, .SD[1], 
+        by = c("seqId")][, seqnames := factor(seqnames, levels = chrs)] %>% 
+  ggplot(data = ., aes(x = start, fill = seqnames)) +
+  geom_histogram(bins = 35) +
+  theme_light() +
+  theme(
+    legend.position = "none",
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.title = element_blank()
+  ) +
+  facet_wrap_custom(~seqnames, ncol = 5, scales = "free_x", drop = F, scale_overrides = chrScales)
+fig1b = annotatedInsertionsMin3[seqnames %in% chrs & 
+          SUPP_trusty > 0 & 
+          repeat.class %in% c(class1, class2) & 
+          repeat.percentage >= 0.85 & annot.class == "genes" &
+          annot.subclass %in% c("cds", "introns", "promoters"), .SD[1], 
+        by = c("seqId")][, seqnames := factor(seqnames, levels = chrs)] %>% 
+  ggplot(data = ., aes(x = start, fill = seqnames)) +
+  geom_histogram(bins = 35) +
+  theme_light() +
+  theme(
+    legend.position = "none",
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.title = element_blank()
+  ) +
+  facet_wrap_custom(~seqnames, ncol = 5, scales = "free_x", drop = F, scale_overrides = chrScales)
+fig1a + fig1b + plot_annotation(tag_levels = 'A')
+```
+
+# Analysis by TE class
+
+```{r}
+roi = annotatedInsertionsMin3[repeat.class %in% c(class1, class2) & SUPP_trusty > 0 & repeat.percentage >= 0.85] # repeats of interest for the article
+ioi = roi[, .SD[1], by = seqId][, c("seqId", "seqnames", "start", "end", "repeat.class", "repeat.subclass",
+                                    "name", "SVLEN", "SUPP_min3", "SUPP_trusty", "SUPP_VEC_trusty")]
+```
+
+This is the classification of TEs by class (I or II), family (e.g., _SINE_), subfamily (e.g., _Alu_) and name (e.g., _AluY_). SVA, _Alu_ and L1 elements have their own table on the Class I section.
+
+```{r}
+tableFamilies = ioi[
+  SUPP_trusty > 0 &
+    repeat.class %in% c("DNA", "LINE", "LTR", "Retroposon", "SINE"),
+  .(
+    Unique = .N, 
+    `Total\n(lax)` = sum(SUPP_min3), 
+    `Total\n(strict)` = sum(SUPP_trusty)
+  ),
+  by = .(repeat.class, repeat.subclass)
+][
+  order(repeat.class, tolower(repeat.subclass))
+] %>%
+  rbind(data.table(
+    repeat.class = "Total",
+    repeat.subclass = "-",
+    Unique = sum(.$Unique),
+    `Total\n(lax)` = sum(.$`Total\n(lax)`),
+    `Total\n(strict)` = sum(.$`Total\n(strict)`)
+  )) %T>% 
+  setnames(c("repeat.class", "repeat.subclass"), c("Repeat\nfamily", "Repeat\nsubfamily")) 
+tableFamilies %>%
+  flextable::flextable() %>%
+  flextable::merge_v(j = c("Repeat\nfamily")) %>%
+  flextable::theme_booktabs() %>%
+  flextable::border_inner_h(border = flextable::fp_border_default()) %>%
+  flextable::align(align = "center", part = "all") %>%
+  flextable::fix_border_issues()
+```
+
+## Class I Elements
+
+### Distribution
+
+```{r fig.dim=c(14, 8),fig.align="center", fig.cap="A) Unique class I TE insertions occurrences on the genome. B) Gene annotations of class I TE insertions on the genome. A single TE may be annotated more than once."}
+fig1a = insertionsTable[seqnames %in% chrs & 
+          SUPP_trusty > 0 & 
+          repeat.class %in% class1 & 
+          repeat.percentage >= 0.85, .SD[1], 
+        by = c("seqId")][, seqnames := factor(seqnames, levels = chrs)] %>% 
+  ggplot(data = ., aes(x = start, fill = seqnames)) +
+  geom_histogram(bins = 35) +
+  theme_light() +
+  theme(
+    legend.position = "none",
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.title = element_blank()
+  ) +
+  facet_wrap_custom(~seqnames, ncol = 5, scales = "free_x", drop = F, scale_overrides = chrScales)
+fig1b = annotatedInsertionsMin3[seqnames %in% chrs & 
+          SUPP_trusty > 0 & 
+          repeat.class %in% class1 & 
+          repeat.percentage >= 0.85 & annot.class == "genes" &
+          annot.subclass %in% c("cds", "introns", "promoters"), .SD[1], 
+        by = c("seqId")][, seqnames := factor(seqnames, levels = chrs)] %>% 
+  ggplot(data = ., aes(x = start, fill = seqnames)) +
+  geom_histogram(bins = 35) +
+  theme_light() +
+  theme(
+    legend.position = "none",
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.title = element_blank()
+  ) +
+  facet_wrap_custom(~seqnames, ncol = 5, scales = "free_x", drop = F, scale_overrides = chrScales)
+fig1a + fig1b + plot_annotation(tag_levels = 'A')
+```
+### Detailed classification
+
+```{r}
+ioi[SUPP_trusty > 0 & repeat.subclass == "SVA", .(
+    Name = gsub("_", " ", name),
+    Unique = .N, 
+    `Total\n(lax)` = sum(SUPP_min3), 
+    `Total\n(strict)` = sum(SUPP_trusty)
+  ), by = .(name)][,-"name"][order(Name)] %>% 
+  totalize() %>% flextable::flextable() %>%
+  flextable::theme_booktabs() %>%
+  flextable::border_inner_h(border = flextable::fp_border_default()) %>%
+  flextable::align(align = "center", part = "all") %>%
+  flextable::fix_border_issues() %>% 
+  flextable::set_caption(caption = "Count of SVA elements by name")
+```
+
+<details><summary>Click to show table with _Alu_ counts by name.</summary>
+```{r}
+ioi[SUPP_trusty > 0 & repeat.subclass == "Alu", .(
+    Name = gsub("_", " ", name),
+    Unique = .N, 
+    `Total\n(lax)` = sum(SUPP_min3), 
+    `Total\n(strict)` = sum(SUPP_trusty)
+  ), by = .(name)][,-"name"][order(Name)] %>% 
+  totalize() %>% flextable::flextable() %>%
+  flextable::theme_booktabs() %>%
+  flextable::border_inner_h(border = flextable::fp_border_default()) %>%
+  flextable::align(align = "center", part = "all") %>%
+  flextable::fix_border_issues() %>% 
+  flextable::set_caption(caption = "Count of _Alu_ elements by name")
+```
+</details>
+
+<details><summary>Click to show table with L1 counts by name.</summary>
+```{r}
+ioi[SUPP_trusty > 0 & repeat.subclass == "L1", .(
+    Name = gsub("_", " ", name),
+    Unique = .N, 
+    `Total\n(lax)` = sum(SUPP_min3), 
+    `Total\n(strict)` = sum(SUPP_trusty)
+  ), by = .(name)][,-"name"][order(Name)] %>% 
+  totalize() %>% flextable::flextable() %>%
+  flextable::theme_booktabs() %>%
+  flextable::border_inner_h(border = flextable::fp_border_default()) %>%
+  flextable::align(align = "center", part = "all") %>%
+  flextable::fix_border_issues() %>% 
+  flextable::set_caption(caption = "Count of L1 elements by name")
+```
+</details>
+
+### Class II TEs on gene sequences
+
+```{r results="asis"}
+genic = roi[repeat.class %in% class1 & annot.subclass %in% c("cds", "introns", "promoters") & !is.na(annot.symbol), 
+    .SD[1], by = c("seqId", "annot.subclass")]
+if (nrow(genic) == 0) {
+  cat("No class I insertions were found on coding sequences, introns or promoters.")
+} else {
+  cat(paste0("<details><summary>Click to show table with ", nrow(genic)," rows.</summary>\n\n"))
+  genic[
+      , .(Position = paste0(seqnames, ":", start %>% format(big.mark = "\u202F", trim = T)),
+          Length = SVLEN,
+          Type = paste0(repeat.class, " (", repeat.subclass, ")"),
+          Gene = annot.symbol,
+          Annotation = fifelse(annot.subclass == "cds", "Coding seq.", fifelse(annot.subclass == "introns", "Intron", "Promoter") ),
+          Occurrences = SUPP_trusty
+      )
+      ][stringi::stri_order(Position, numeric = T)] %>% 
+  flextable::flextable() %>% 
+  flextable::autofit() %>% 
+  flextable::theme_booktabs() %>% 
+  flextable::align_nottext_col(align = "center") %>%
+  flextable::flextable_to_rmd()
+  cat("</details>\n\n")
+}
+```
+
+## Class II Elements
+
+### Distribution
+
+```{r fig.dim=c(14, 8), fig.cap="A) Unique class II TE insertions occurrences on the genome. B) Gene annotations of class II TE insertions on the genome. A single TE may be annotated more than once."}
+fig1a = insertionsTable[seqnames %in% chrs & 
+          SUPP_trusty > 0 & 
+          repeat.class %in% class2 & 
+          repeat.percentage >= 0.85, .SD[1], 
+        by = c("seqId")][, seqnames := factor(seqnames, levels = chrs)] %>% 
+  ggplot(data = ., aes(x = start, fill = seqnames)) +
+  geom_histogram(bins = 35) +
+  theme_light() +
+  theme(
+    legend.position = "none",
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.title = element_blank()
+  ) +
+  facet_wrap_custom(~seqnames, ncol = 5, scales = "free_x", drop = F, scale_overrides = chrScales)
+fig1b = annotatedInsertionsMin3[seqnames %in% chrs & 
+          SUPP_trusty > 0 & 
+          repeat.class %in% class2 & 
+          repeat.percentage >= 0.85 & annot.class == "genes" &
+          annot.subclass %in% c("cds", "introns", "promoters"), .SD[1], 
+        by = c("seqId")][, seqnames := factor(seqnames, levels = chrs)] %>% 
+  ggplot(data = ., aes(x = start, fill = seqnames)) +
+  geom_histogram(bins = 35) +
+  theme_light() +
+  theme(
+    legend.position = "none",
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.title = element_blank()
+  ) +
+  facet_wrap_custom(~seqnames, ncol = 5, scales = "free_x", drop = F, scale_overrides = chrScales)
+fig1a + fig1b + plot_annotation(tag_levels = 'A')
+```
+
+### Class II TEs on gene sequences
+
+```{r results="asis", fig.align="center"}
+genic = roi[repeat.class %in% class2 & annot.subclass %in% c("cds", "introns", "promoters") & !is.na(annot.symbol), 
+    .SD[1], by = c("seqId", "annot.subclass")]
+if (nrow(genic) == 0) {
+  cat("No class II insertions were found on coding sequences, introns or promoters.")
+} else {
+  cat(paste0("<details><summary>Click to show table with ", nrow(genic)," rows.</summary>\n\n"))
+  genic[
+      , .(Position = paste0(seqnames, ":", start %>% format(big.mark = "\u202F", trim = T)),
+          Length = SVLEN,
+          Type = paste0(repeat.class, " (", repeat.subclass, ")"),
+          Gene = annot.symbol,
+          Annotation = fifelse(annot.subclass == "cds", "Coding seq.", fifelse(annot.subclass == "introns", "Intron", "Promoter") ),
+          Occurrences = SUPP_trusty
+      )
+      ][stringi::stri_order(Position, numeric = T)] %>% 
+  flextable::flextable() %>% 
+  flextable::autofit() %>% 
+  flextable::theme_booktabs() %>% 
+  flextable::align_nottext_col(align = "center") %>%
+  flextable::flextable_to_rmd()
+  cat("</details>\n\n")
+}
+```
+
+# TE Deletions
+
+It is common to find deletions whose coordinates match those of a TE sequence in the reference genome. This section presents them.
+
+```{r}
+meDeletionsMin3 = readRDS(snakemake@input[["meDeletionsMin3"]])
+genotypedDeletions = readRDS(snakemake@input[["genotypedDeletions"]])
+```
+
+- `r meDeletionsMin3[SUPP_trusty > 0] %>% nrow()` TE deletions have been found, adding up to `r meDeletionsMin3[SUPP_trusty > 0]$SUPP_trusty %>% sum()` occurrences among cases.
+- These deletions have a mean prevalence per sample of `r meDeletionsMin3[SUPP_trusty > 0]$SUPP_trusty %>% mean()` ± 
+`r meDeletionsMin3[SUPP_trusty > 0]$SUPP_trusty %>% sd()` (median of `r meDeletionsMin3[SUPP_trusty > 0]$SUPP_trusty %>% median()`).
+- The deletion length is in the range of `r meDeletionsMin3[SUPP_trusty > 0]$svlen %>% quantile(0.25, na.rm = T)`-`r meDeletionsMin3[SUPP_trusty > 0]$svlen %>% quantile(0.75, na.rm = T)` bp for 50% of them (Q2-Q3, both included), and the maximum length found was `r meDeletionsMin3[SUPP_trusty > 0][svlen == max(svlen)]$svlen`, for a deleted `r meDeletionsMin3[SUPP_trusty > 0][svlen == max(svlen)]$repeat.subclass` sequence. 
+
+## Allele frequency
+
+- The mean AF for deletions is `r genotypedDeletions[SUPP_trusty > 0]$maf %>% mean()` ± `r genotypedDeletions[SUPP_trusty > 0]$maf %>% sd()` (median of `r genotypedDeletions[SUPP_trusty > 0]$maf %>% median()`).
+- With `r genotypedDeletions[SUPP_trusty > 0 & maf == 1] %>% nrow()` (`r genotypedDeletions[maf == 1 & SUPP_trusty > 0] %>% nrow()` of which has passed the stringent filtering) deletions appearing in a homozygous state in all patients (Fig. 7). On the other hand, `r genotypedDeletions[maf == 0 & SUPP_trusty > 0] %>% nrow()` deletions were genotyped as 0/0 on all cases, and have not been included in the rest of this section.
+
+```{r}
+genotypedDeletions = genotypedDeletions[!(maf == 0 & SUPP_trusty > 0)]
+genotypedDeletions = genotypedDeletions[stri_order(seqnames, numeric = T)]
+meDeletionsMin3 = meDeletionsMin3[id %in% genotypedDeletions$id]
+```
+
+```{r fig.align="center",fig.cap="Allele frequency is shown for TE deletions for each chromosome. Each dot marks a different deletion"}
+copy = copy(genotypedDeletions[SUPP_trusty > 0])[, `:=`(
+    seqnames = factor(seqnames, levels = chrs) %>% as.numeric()
+  )]
+qqman::manhattan(
+  copy,
+  chr = "seqnames", bp = "start", snp = "id", p = "maf",
+  logp = F, cex = 0.5, cex.axis = 0.9, ylab = "AF",
+  chrlabs = chrs %>% sub(pattern = "chr(.+)", replacement = "\\1", x = .) %>% .[copy$seqnames %>% unique()]
+)
+```
+
+# Enrichment analysis
+
+```{r}
+library(GO.db)
+library(clusterProfiler)
+library(plotly)
+library(topGO)
+library(Rgraphviz)
+library(enrichplot)
+library(DOSE)
+
+pLimit = snakemake@params[["plimit"]] %>% as.numeric() # p value threshold
+```
+
+This section shows the result of enrichment analysis on the genes affected with TE insertions.
+
+## Gene Ontology
+
+```{r}
+goCaptions = c(
+  "Barplot for enriched categories. Values on top have lower p values.",
+  "Enrichment map. Categories are connected by genes in common. Dot size indicates number of genes, dot color indicates adjusted _p_ value.",
+  "Gene-concept network. Categories (brown dots) are linked by genes in common (gray dots). The size of category dots indicates gene count."
+)
+```
+
+
+```{r go,results="asis", fig.align="center", fig.cap = goCaptions}
+fullNames = list(MF = "Molecular Function", BP = "Biological Process",
+                 CC = "Cellular Component")
+for (x in c("MF", "BP", "CC")) {
+  name = paste0("ego", x)
+  dtName = paste0(name, "Dt")
+  assign(x = name,
+         readRDS(snakemake@input[[name]]))
+  object = get(name)
+  cat("\n\n#### Annotation group: ", x, " (", fullNames[[x]], ")", "\n\n", sep = "")
+  if (is.null(object)) {
+    cat("No significant results were found for this group.\n\n")
+    next()
+  }
+  knitr::opts_chunk
+  object@result %>% data.table() %>%
+    .[, `:=`(
+      "geneID" = NULL,
+      GeneRatioCalc = GeneRatio %>% lapply(function (x)
+        str2expression(x) %>% eval()) %>% unlist()
+    )] %>% assign(dtName, ., envir = .GlobalEnv)
+  dt = get(dtName)[pvalue <= pLimit]
+  barplot(
+      object,
+      showCategory = 12,
+      font.size = 10,
+      title = paste0("GO - ", x)) %>% print()
+  topN = min(nrow(dt), 10) # We compare smallest #1 and #10 pvalues
+  #if fewer that 10 rows, last row instead of 10th
+  cat("\n\nThe category with lowest p value is *", dt[order(p.adjust)][1, Description],
+      "* (", dt[order(p.adjust)][1, p.adjust],
+      ")", sep = "")
+  if (nrow(dt > 1)) 
+    cat(", and the highest (among the lowest ", topN,") is *",
+      dt[order(p.adjust)][topN, Description] %>% as.character(), "* (",
+      dt[order(p.adjust)][topN, p.adjust],")", ". The ratio is ",
+      (dt[order(p.adjust)][topN, p.adjust] / dt[order(p.adjust)][1, p.adjust]) %>% format(nsmall = 2),
+      ", i.e., they differ in ",
+      ((dt[order(p.adjust)][10, p.adjust] / dt[order(p.adjust)][1, p.adjust]) %>%
+         round() %>% as.character() %>% stri_length()) - 1,
+      " orders of magnitude.\n\n",
+      sep = '')
+  else cat('.\n\n')
+  
+  n = min(100, nrow(dt))
+  message = if (n == 100) " for categories with the lowest p value" else " for significant categories"
+  cat(paste0("<details><summary>Click to show/hide table with ", n, " rows", message, ".</summary>\n\n"))
+  dt[order(p.adjust)][1:n] %>% 
+    .[, lapply(.SD, function (x) if (is.numeric(x)) {sprintf("%.4g", x)} else x)] %>% 
+  flextable::flextable() %>% 
+  flextable::autofit() %>%
+  flextable::theme_booktabs() %>% 
+  flextable::align_nottext_col(align = "center") %>%
+  flextable::flextable_to_rmd() %>% print()
+  cat("</details>\n\n")
+  cat("<br>")
+  cat("\nThese plots show connections among categories:\n\n")
+  emapplot(
+    get(name) %>% pairwise_termsim(),
+    showCategory = 30,
+    cex.params = list(category_label = 0.5)
+  ) %>% print()
+  cat("\n\n")
+  cnetplot(
+    get(name),
+    showCategory = 30,
+    cex.params = list(category_label = 0.5, gene_label = 0.5),
+    node_label = "gene" 
+  ) %>% print()
+}
+```
+
+<!-- ## KEGG disabled because enrichKEGG wont work-->
+
+<!-- ```{r kegg, include=F,results="asis"} -->
+<!-- # kegg = readRDS(snakemake@input[["kegg"]]) -->
+<!-- # if (is.null(kegg)) { -->
+<!-- #     cat("No significant results were found in KEGG.\n\n") -->
+<!-- # } else { -->
+<!-- #   keggDt = kegg@result %>% as.data.table() -->
+<!-- #   if (nrow(keggDt[p.adjust <= pLimit]) >= 1) { -->
+<!-- #     cat("\n\nHere it is a barplot of most significantly enriched KEGG categories.\n\n") -->
+<!-- #     barplot(kegg) %>% print() -->
+<!-- #     cat("The most significant category was ", keggDt[order(p.adjust)][1, Description], ".", sep = "") -->
+<!-- #   } else { -->
+<!-- #     cat("No significant results were found in KEGG.\n\n") -->
+<!-- #   } -->
+<!-- # } -->
+<!-- ``` -->
+
+## Disease Ontology
+
+```{r do, results="asis", fig.align="center", fig.cap=goCaptions[1]}
+do = readRDS(snakemake@input[["do"]])
+if (is.null(do)) {
+  cat("No significant results were found in DO.\n\n")
+} else {
+  doDt = do@result %>% data.table()
+  if (nrow(doDt[p.adjust <= pLimit]) >= 1) {
+    cat("\n\nHere it is a barplot of most significantly enriched DO categories.\n\n")
+    barplot(do) %>% print()
+    cat("The most significant category was '", doDt[order(p.adjust)][1, Description], "'.", sep = "")
+  } else {
+    cat("No significant results were found in DO.\n\n")
+  }
+}
+```
+
+## Network of Cancer Genes 
+
+```{r ncg, results="asis", fig.align="center", fig.cap=goCaptions[1]}
+ncg = readRDS(snakemake@input[["ncg"]])
+if (is.null(ncg)) {
+  cat("No significant results were found in NCG.\n\n")
+} else {
+  ncgDt = ncg@result %>% data.table()
+  if (nrow(ncgDt[p.adjust <= pLimit]) >= 1) {
+    cat("\n\nHere it is a barplot of most significantly enriched NCG categories.\n\n")
+    barplot(ncg) %>% print()
+    cat("The most significant category was ", ncgDt[order(p.adjust)][1, Description], ".", sep = "")
+  } else {
+    cat("No significant results were found in NCG.\n\n")
+  }
+}
+```
+
+```{r eval=as.logical(length(snakemake@input[["otherSets"]])),child=paste0(snakemake@scriptdir, "/sets.Rmd")}
+```
+

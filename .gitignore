@@ -1,0 +1,15 @@
+*.svg
+*.rds
+.snakemake
+test
+tasks.sh
+tasks.slurm
+nohup*.out
+config.*.yaml
+!config.template.yaml
+!config.default.yaml
+submit_*.sh
+nope
+scripts/*2.py
+scripts/*2.Rmd
+scripts/*2.R
