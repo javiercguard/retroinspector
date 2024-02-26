@@ -130,3 +130,7 @@ For each run, Retrosnake will generate a series of files. This is how it would l
     - `public.te.vcf.gz` and `public.te.lax.vcf.gz` contain all TE insertions (across samples) for the strict and lax criterion, respectively.
     - `retrosnake.merged.vcf.gz` contains all insertions merged across samples.
     - The directory `survivor` contains the result of merging both callers' results for each patient (`S1.merged.survivor.vcf.gz`, etc.), and an inter-sample merge (`retrosnake.merged.survivor.vcf.gz`).
+
+## Example
+
+Please see [test_dataset/test.md](./test_dataset/test.md) for an example to run Retrosnake with publicly available data.
