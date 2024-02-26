@@ -1,5 +1,4 @@
-# Species and genome
-species: "homo_sapiens"
+# Genome
 referenceGenome: "/path/to/GCA_000001405.15_GRCh38_no_alt_analysis_set.fa" # or leave empty to automatically download it
 
 # Paths
