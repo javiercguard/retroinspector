@@ -13,6 +13,9 @@ if fastqDir:
     for s in samples:
         config["samples"][s.split(".")[0]] = fastqDir + "/" + s
 
+if config["referenceGenome"] == "":
+    config["referenceGenome"] = str(workflow.basedir) + "/data/GCA_000001405.15_GRCh38_no_alt_analysis_set.fa"
+
 print(file = sys.stderr)
 print(config["samples"], file = sys.stderr)
 print(file = sys.stderr)

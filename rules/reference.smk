@@ -28,3 +28,14 @@ rule prepare_te_nooverlap:
       -i {input[0]} > \
       {output[0]}
     """
+
+rule get_reference_hg38:
+  conda: "../env.yaml"
+  output: 
+    str(workflow.basedir) + "/data/GCA_000001405.15_GRCh38_no_alt_analysis_set.fa",
+    "data/ref.fna.gz"
+  shell: 
+    """
+    wget -O {output[1]} ftp://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/001/405/GCA_000001405.15_GRCh38/seqs_for_alignment_pipelines.ucsc_ids/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.gz
+    gunzip {output[1]} > {output[0]}
+    """
