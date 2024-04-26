@@ -1,4 +1,4 @@
-Restrosnake is a pipeline to detect and annotate TE insertions and deletions on human genomes sequenced by nanopore sequencing. It has been published on [TBA].
+RetroInspector is a pipeline to detect and annotate TE insertions and deletions on human genomes sequenced by nanopore sequencing. It has been published on [TBA].
 
 Please cite this article if you use it.
 
@@ -17,7 +17,7 @@ mamba create -n snakemake snakemake
 After that, clone this repository:
 
 ```
-git clone https://github.com/javiercguard/retrosnake
+git clone https://github.com/javiercguard/retroinspector
 ```
 
 That's it.
@@ -72,7 +72,7 @@ These are the options available, in __bold__ the ones more likely to need to be 
 | __`referenceGenome`__ | Full path to the reference genome | Example path |
 | __`fastq_directory`__ | Full path to directory with FASTA files | Example path |
 | __`outputPath`__ | Full path in which to store results | Example path |
-| _`allPrefix`_ | An infix to put in the name of some files. For example, the report will be called `report.<allPrefix>.html` | retrosnake |
+| _`allPrefix`_ | An infix to put in the name of some files. For example, the report will be called `report.<allPrefix>.html` | retro |
 | _`minimumReadSupport`_ | Minimum number of reads for variants to be called. | 3 |
 | `insertionDistanceLimitIntraPatient` | When merging insertions from the same sample, maximum distance of coordinates for a group of insertions to be considered the same on.e | 20 |
 | `insertionDistanceLimitInterPatient` | Same as above, but for merging from different samples. | 20 |
@@ -84,7 +84,7 @@ These are the options available, in __bold__ the ones more likely to need to be 
 
 ## Output
 
-For each run, Retrosnake will generate a series of files. This is how it would look for a run with samples named S1 (S2, S3, etc.), with index files omitted (`.csi`, `.bai`, etc.):
+For each run, RetroInspector will generate a series of files. This is how it would look for a run with samples named S1 (S2, S3, etc.), with index files omitted (`.csi`, `.bai`, etc.):
 ```
 ├── alns
 │   ├── S1.bam
@@ -105,14 +105,14 @@ For each run, Retrosnake will generate a series of files. This is how it would l
     │   └── ...
     ├── S1.merged.both.vcf.gz
     ├── ...
-    ├── retrosnake.me.deletions.vcf.gz
-    ├── retrosnake.merged.vcf.gz
+    ├── retro.me.deletions.vcf.gz
+    ├── retro.merged.vcf.gz
     ├── public.te.lax.vcf.gz
     ├── public.te.vcf.gz
     ├── survivor
     │   ├── S1.merged.survivor.vcf.gz
     │   ├── ...
-    │   └── retrosnake.merged.survivor.vcf.gz
+    │   └── retro.merged.survivor.vcf.gz
     └── svim
         ├── S1.svim.polished.vcf.gz
         ├── S1.svim.vcf.gz
@@ -126,11 +126,11 @@ For each run, Retrosnake will generate a series of files. This is how it would l
     - Variants called by `cuteSV` are inside `cutesv`. The `polished` infix refers to the VCF that contains the reassembled inserted sequences.
     - Same for `svim`.
     - `S1.merged.both.vcf.gz` contains the union of the insertions called by both callers.
-    - `retrosnake.me.deletions.vcf.gz` contains all TE deletions (across samples) with allele frequency.
+    - `retro.me.deletions.vcf.gz` contains all TE deletions (across samples) with allele frequency.
     - `public.te.vcf.gz` and `public.te.lax.vcf.gz` contain all TE insertions (across samples) for the strict and lax criterion, respectively.
-    - `retrosnake.merged.vcf.gz` contains all insertions merged across samples.
-    - The directory `survivor` contains the result of merging both callers' results for each patient (`S1.merged.survivor.vcf.gz`, etc.), and an inter-sample merge (`retrosnake.merged.survivor.vcf.gz`).
+    - `retro.merged.vcf.gz` contains all insertions merged across samples.
+    - The directory `survivor` contains the result of merging both callers' results for each patient (`S1.merged.survivor.vcf.gz`, etc.), and an inter-sample merge (`retro.merged.survivor.vcf.gz`).
 
 ## Example
 
-Please see [test_dataset/test.md](./test_dataset/test.md) for an example to run Retrosnake with publicly available data.
+Please see [test_dataset/test.md](./test_dataset/test.md) for an example to run RetroInspector with publicly available data.
