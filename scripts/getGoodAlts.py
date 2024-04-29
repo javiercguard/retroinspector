@@ -27,7 +27,7 @@ def findOp (cigarStr, length, op = "I"):
 def assemble (reads, tmpDir, id, insSeq, length):
     from spoa import poa
     try:
-        result, alns = poa([reads[0], "A"*300], algorithm=1, m=2, n=-4, g=-4, e=-2, q=-24, c=-1)
+        result, alns = poa(reads, algorithm=1, m=2, n=-4, g=-4, e=-2, q=-24, c=-1)
         return (result, "ASM")
     except:
         return(insSeq, "LENGTH")
