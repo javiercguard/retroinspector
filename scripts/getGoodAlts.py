@@ -28,6 +28,10 @@ def assemble (reads, tmpDir, id, insSeq, length):
     from spoa import poa
     try:
         result, alns = poa(reads, algorithm=1, m=2, n=-4, g=-4, e=-2, q=-24, c=-1)
+        if not (0.8 * length < len(result) < 1.2 * length):
+            # print(id)
+            # print(result, alns)
+            return(insSeq, "LENGTH")
         return (result, "ASM")
     except:
         return(insSeq, "LENGTH")
@@ -137,15 +141,29 @@ def processSv (line, parentTmp, bamFile):
                         bestIns = i
                         if difference == 0:
                             break
+                if bestIns == "" or idSV == "cuteSV.INS.45":
+                    print(idSV, len(bestIns), len(sequences))
+                    print(bestIns)
                 alt, method = assemble(seqList, 
                     individualTmp, 
                     idSV, bestIns, svLen)
+                if idSV == "cuteSV.INS.45":
+                    print(f"alt: {alt}, method: {method}")
+                if idSV == "cuteSV.INS.45":
+                    print("before setting sv.4")
+                    print(f"alt: {alt}")
+                    print(sv)
                 sv[4] = alt
+                if bestIns == "" or idSV == "cuteSV.INS.45":
+                    print("after setting sv.4")
+                    print(sv)
                 sv[7] = re.sub("(RNAMES|READS)=[^;]+", "", sv[7]) + "ALTMETHOD=" + method
+                if bestIns == "" or idSV == "cuteSV.INS.45":
+                    print(sv)
             except Exception as e:
                 traceback.print_exc()
                 print(e)
-                print("Exception for ", "\t".join(sv))
+                print("Exception for ", idSV)
                 return "\t".join(sv)
         return("\t".join(sv))
 
