@@ -19,7 +19,7 @@ rule assemblyAlleles:
       {input.vcf} \
       {input.bam} \
       {output[0]} \
-      {threads};
+      {threads}; > {log} 2>&1
     bcftools sort {output[0]} -O z -o {output[1]} 2>> {log};
     bcftools index {output[1]} 2>> {log}
     """
@@ -35,22 +35,74 @@ rule merge_insertions_intrapatient:
       "variants/cutesv/{sample}.cutesv.polished.vcf.gz.csi",
       "variants/svim/{sample}.svim.polished.vcf.gz",
       "variants/svim/{sample}.svim.polished.vcf.gz.csi"
-      ]
+      ],
   output: 
-    temp("tmp/{sample}.merged.both.vcf"),
-    "variants/{sample}.merged.both.vcf.gz",
-    "variants/{sample}.merged.both.vcf.gz.csi"
+    "tmp/{sample}.merged.both.ungenotyped.vcf", #! make temp
+    # "variants/{sample}.merged.both.vcf.gz",
+    # "variants/{sample}.merged.both.vcf.gz.csi"
   params:
-    distanceLimit = config["insertionDistanceLimitIntraPatient"]
+    distanceLimit = config["insertionDistanceLimitIntraPatient"],
+    script = str(workflow.basedir) + "/scripts/merge.py",
   shell:
     """
     python3 {input.script} \
       -samples cuteSV SVIM \
       -vcf {input.files[0]} {input.files[2]} \
       -o {output[0]} \
-      -d {params.distanceLimit} 2> {log};
-    bcftools sort {output[0]} -O z -o {output[1]} 2>> {log};
-    bcftools index {output[1]} 2>> {log}
+      -d {params.distanceLimit} # > {log} 2>&1
+    """
+    # bcftools sort {output[0]} -O z -o {output[1]} 2>> {log};
+    # bcftools index {output[1]} 2>> {log}
+rule create_mosdepth_bed_ins:
+  conda: "../env.yaml"
+  log:
+    "logs/geno/{sample}.createBed.ins.log"
+  input:
+    vcf = "tmp/{sample}.merged.both.ungenotyped.vcf"
+  output:
+    bed = "tmp/{sample}.ins.bed" #! make temp
+  script: "../scripts/vcfToBedForMosdepth.py"
+
+rule mosdepth_for_genotyping_ins:
+  conda: "../env.yaml"
+  log:
+    "logs/mosdepth/{sample}.ins.log"
+  threads: 4
+  input:
+    mosdepthBed = "tmp/{sample}.ins.bed",
+    bam = "alns/{sample}.bam",
+    bai = "alns/{sample}.bam.bai",
+  output:
+    "mosdepth/{sample}.ins.regions.bed.gz"
+  params:
+    prefix = "mosdepth/{sample}.ins"
+  shell:
+    """
+    mosdepth -t {threads} -Q 20 -n -b {input.mosdepthBed} \
+    {params.prefix} {input.bam} 1>&2 2> {log}
+    """
+
+rule genotype:
+  conda: "../env.yaml"
+  log:
+    "logs/geno/{sample}.geno.ins.log"
+  input:
+    coverage = "mosdepth/{sample}.ins.regions.bed.gz",
+    vcf = "tmp/{sample}.merged.both.ungenotyped.vcf",
+  output: 
+    vcf = "variants/{sample}.merged.both.vcf", #! amke temp
+  script: "../scripts/genotype.py"
+rule sort_index_vcf:
+  conda: "../env.yaml"
+  input: 
+    "variants/{sample}.merged.both.vcf",
+  output:
+    "variants/{sample}.merged.both.vcf.gz",
+    "variants/{sample}.merged.both.vcf.gz.csi",
+  shell:
+    """
+    bcftools sort -O z -o {output[0]} {input[0]}
+    bcftools index {output[0]}
     """
 
 def getIntraPatientMerges (wilcards):
@@ -78,7 +130,7 @@ rule merge_insertions_interpatient:
       -samples {params.samples} \
       -vcf {input.files} \
       -o {output[0]} \
-      -d {params.distanceLimit} 2> {log};
+      -d {params.distanceLimit} &> {log};
     bcftools sort {output[0]} -O z -o {output[1]} 2>> {log};
     bcftools index {output[1]} 2>> {log}
     """
