@@ -1,22 +1,54 @@
 #! /usr/env python3
-
 from statistics import median
 from math import floor
 from pysam import VariantFile
 from collections import namedtuple
 from fuzzywuzzy import fuzz as fz
-import sys, argparse, traceback
+import sys
+import argparse
+import traceback
 
 signature = "merge.py"
 
 aln = namedtuple("aln", "score")
-def globAlign (seq1, seq2):
+
+
+def getGtQv(var, sampleN, hasGT, hasQV):
+    gt = (None, None)
+    qv = -1
+    if not hasGT:
+        return gt, qv
+    if sampleN == 1:
+        gt = var.samples[0]["GT"]
+    elif sampleN > 1:
+        if hasQV:
+            genotypes = [(var.samples[sample]["GT"],
+                          float(var.samples[sample]["QV"]) if isNumber(var.samples[sample]["QV"]) else -1)
+                         for sample in var.samples]
+            genotypes.sort(key=lambda x: x[1], reverse=True)
+            gt = genotypes[0][0]
+            qv = genotypes[0][1]
+        else:
+            gt = var.samples[0]["GT"]
+    return gt, qv
+
+
+def isNumber(x):
+    try:
+        float(x)
+        return True
+    except:
+        return False
+
+
+def globAlign(seq1, seq2):
     """
     Globally align 2 sequences without gap penalties.
     str, str -> [namedtuple])
     """
-    r = aln(score = fz.ratio(seq1, seq2))
+    r = aln(score=fz.ratio(seq1, seq2))
     return r
+
 
 def replaceChar(str, what, idx):
     """
@@ -24,17 +56,20 @@ def replaceChar(str, what, idx):
     """
     return str[0:idx] + what + str[idx + 1:]
 
+
 def toGenotype(inputDict):
     """
     dict -> str
     """
-    fields = ("GT", "PSV", "LN", "DR", "ST", "QV", "TY", "ID", "RAL", "AAL", "CO", "SC")
+    fields = ("GT", "PSV", "LN", "DR", "ST", "QV",
+              "TY", "ID", "RAL", "AAL", "CO", "SC")
     result = ""
     for i in fields:
         result += str(inputDict[i]) + ":"
-    return result[0:-1] # remove trailing colon
+    return result[0:-1]  # remove trailing colon
 
-def getInfoValue(sv, what = "SVLEN", idx = 0, toInt = True):
+
+def getInfoValue(sv, what="SVLEN", idx=0, toInt=True):
     result = ""
     try:
         result = sv.info[what][idx]
@@ -50,12 +85,18 @@ def getInfoValue(sv, what = "SVLEN", idx = 0, toInt = True):
     return result
 
 
-parser = argparse.ArgumentParser(formatter_class = argparse.ArgumentDefaultsHelpFormatter)
+parser = argparse.ArgumentParser(
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-parser.add_argument("-samples", dest = "samples", nargs = "+", required = True, help = "Samples for sample columns")
-parser.add_argument("-vcf", dest = "files", nargs = "+", required = True, help = "Indexed VCF files")
-parser.add_argument("-o", dest = "out", required = True, help = "Output VCF file")
-parser.add_argument("-d", dest = "dist", default = 0, type = int, help = "Maximum dist between starting poitns for SVs")
+parser.add_argument("-samples", dest="samples", nargs="+",
+                    required=True, help="Samples for sample columns")
+parser.add_argument("-vcf", dest="files", nargs="+",
+                    required=True, help="Indexed VCF files")
+parser.add_argument("-o", dest="out", required=True, help="Output VCF file")
+parser.add_argument("-d", dest="dist", default=0, type=int,
+                    help="Maximum dist between starting poitns for SVs")
+parser.add_argument("--multi-sample-input", "-msi", dest="singleSample", default=True,
+                    action="store_true", help="The input files correspond to one sample each")
 
 args = parser.parse_args()
 
@@ -63,15 +104,16 @@ sampleList = args.samples
 vcfs = args.files
 outFile = args.out
 distance = args.dist
-considerSeq = 0
+singleSample = args.singleSample
+considerSeq = 1
 
 print(vcfs)
 
 vcfs = [VariantFile(vcf) for vcf in vcfs]
 
-consumed = set() # For SVs that have been matched
+consumed = set()  # For SVs that have been matched
 # emptyGeno = "./.:NaN:0:0,0:--:NaN:NaN:NaN:NAN:NAN:NAN" # Not found in sample
-formatStr = "GT:PSV:LN:DR:ST:QV:TY:ID:RAL:AAL:CO"
+# formatStr = "GT:PSV:LN:DR:ST:QV:TY:ID:RAL:AAL:CO"
 
 out = VariantFile(outFile, "w")
 for i in sampleList:
@@ -80,36 +122,61 @@ for i in vcfs[0].header.records:
     if i.type == "CONTIG":
         out.header.add_record(i)
 
-out.header.add_meta("INFO", items = [("ID", "CIEND"), ("Number", 2), ("Type", "String"), ("Description", "PE confidence interval around END")])
-out.header.add_meta("INFO", items = [("ID", "CIPOS"), ("Number", 2), ("Type", "String"), ("Description", "PE confidence interval around POS")])
-out.header.add_meta("INFO", items = [("ID", "CHR2"), ("Number", 1), ("Type", "String"), ("Description", "Chrom. for END coord. for translocations")])
-out.header.add_meta("INFO", items = [("ID", "END"), ("Number", 1), ("Type", "Integer"), ("Description", "End position of the structural variant")])
-out.header.add_meta("INFO", items = [("ID", "MAPQ"), ("Number", 1), ("Type", "Integer"), ("Description", "Median mapping quality of paired-ends")])
-out.header.add_meta("INFO", items = [("ID", "RE"), ("Number", 1), ("Type", "Integer"), ("Description", "read support")])
-out.header.add_meta("INFO", items = [("ID", "SVLEN"), ("Number", 1), ("Type", "Integer"), ("Description", "Length of the SV")])
-out.header.add_meta("INFO", items = [("ID", "MAXDIFF"), ("Number", 1), ("Type", "Integer"), ("Description", "Max. difference in start coordinates between samples.")])
-out.header.add_meta("INFO", items = [("ID", "SVMETHOD"), ("Number", 1), ("Type", "String"), ("Description", "Method for generating this merged VCF file")])
-out.header.add_meta("INFO", items = [("ID", "SVTYPE"), ("Number", 1), ("Type", "String"), ("Description", "Type of the SV")])
-out.header.add_meta("INFO", items = [("ID", "SUPP_VEC"), ("Number", 1), ("Type", "String"), ("Description", "Vector of supporting samples")])
-out.header.add_meta("INFO", items = [("ID", "SUPP"), ("Number", 1), ("Type", "Integer"), ("Description", "Number of samples supporting the variant")])
-out.header.add_meta("INFO", items = [("ID", "STRANDS"), ("Number", 1), ("Type", "String"), ("Description", "Indicating the direction of the reads with resp")])
+out.header.add_meta("INFO", items=[("ID", "CIEND"), ("Number", 2), (
+    "Type", "String"), ("Description", "PE confidence interval around END")])
+out.header.add_meta("INFO", items=[("ID", "CIPOS"), ("Number", 2), (
+    "Type", "String"), ("Description", "PE confidence interval around POS")])
+out.header.add_meta("INFO", items=[("ID", "CHR2"), ("Number", 1), (
+    "Type", "String"), ("Description", "Chrom. for END coord. for translocations")])
+out.header.add_meta("INFO", items=[("ID", "END"), ("Number", 1), (
+    "Type", "Integer"), ("Description", "End position of the structural variant")])
+out.header.add_meta("INFO", items=[("ID", "MAPQ"), ("Number", 1), (
+    "Type", "Integer"), ("Description", "Median mapping quality of paired-ends")])
+out.header.add_meta("INFO", items=[(
+    "ID", "RE"), ("Number", 1), ("Type", "Integer"), ("Description", "read support")])
+out.header.add_meta("INFO", items=[(
+    "ID", "SVLEN"), ("Number", 1), ("Type", "Integer"), ("Description", "Length of the SV")])
+out.header.add_meta("INFO", items=[("ID", "MAXDIFF"), ("Number", 1), ("Type", "Integer"), (
+    "Description", "Max. difference in start coordinates between samples.")])
+out.header.add_meta("INFO", items=[("ID", "SVMETHOD"), ("Number", 1), (
+    "Type", "String"), ("Description", "Method for generating this merged VCF file")])
+out.header.add_meta("INFO", items=[(
+    "ID", "SVTYPE"), ("Number", 1), ("Type", "String"), ("Description", "Type of the SV")])
+out.header.add_meta("INFO", items=[("ID", "SUPP_VEC"), ("Number", 1), (
+    "Type", "String"), ("Description", "Vector of supporting samples")])
+out.header.add_meta("INFO", items=[("ID", "SUPP"), ("Number", 1), (
+    "Type", "Integer"), ("Description", "Number of samples supporting the variant")])
+out.header.add_meta("INFO", items=[("ID", "STRANDS"), ("Number", 1), (
+    "Type", "String"), ("Description", "Indicating the direction of the reads with resp")])
 
-out.header.add_meta("FORMAT", items = [("ID", "GT"), ("Number", 1), ("Type", "String"), ("Description", "Genotype")])
-out.header.add_meta("FORMAT", items = [("ID", "PSV"), ("Number", 1), ("Type", "String"), ("Description", "Previous support vector")])
-out.header.add_meta("FORMAT", items = [("ID", "LN"), ("Number", 1), ("Type", "Integer"), ("Description", "predicted length")])
-out.header.add_meta("FORMAT", items = [("ID", "DR"), ("Number", 2), ("Type", "String"), ("Description", "#supporting reference,variant reads in that order")])
-out.header.add_meta("FORMAT", items = [("ID", "ST"), ("Number", 1), ("Type", "String"), ("Description", "Strand of SVs")])
-out.header.add_meta("FORMAT", items = [("ID", "QV"), ("Number", 1), ("Type", "String"), ("Description", "Quality values: if not defined a . otherwise the r")])
-out.header.add_meta("FORMAT", items = [("ID", "TY"), ("Number", 1), ("Type", "String"), ("Description", "Types")])
-out.header.add_meta("FORMAT", items = [("ID", "ID"), ("Number", 1), ("Type", "String"), ("Description", "Variant ID from input")])
-out.header.add_meta("FORMAT", items = [("ID", "RAL"), ("Number", 1), ("Type", "String"), ("Description", "Reference allele sequence reported from input")])
-out.header.add_meta("FORMAT", items = [("ID", "AAL"), ("Number", 1), ("Type", "String"), ("Description", "Alternative allele sequence reported from input")])
-out.header.add_meta("FORMAT", items = [("ID", "CO"), ("Number", 1), ("Type", "String"), ("Description", "Coordinates")])
-out.header.add_meta("FORMAT", items = [("ID", "SC"), ("Number", 1), ("Type", "Integer"), ("Description", "Levenshtein distance ratio to first sample")])
+out.header.add_meta("FORMAT", items=[
+                    ("ID", "GT"), ("Number", 1), ("Type", "String"), ("Description", "Genotype")])
+out.header.add_meta("FORMAT", items=[("ID", "PSV"), ("Number", 1), (
+    "Type", "String"), ("Description", "Previous support vector")])
+out.header.add_meta("FORMAT", items=[(
+    "ID", "LN"), ("Number", 1), ("Type", "Integer"), ("Description", "predicted length")])
+out.header.add_meta("FORMAT", items=[("ID", "DR"), ("Number", 2), ("Type", "Integer"), (
+    "Description", "#supporting reference,variant reads in that order")])
+out.header.add_meta("FORMAT", items=[(
+    "ID", "ST"), ("Number", 1), ("Type", "String"), ("Description", "Strand of SVs")])
+out.header.add_meta("FORMAT", items=[("ID", "QV"), ("Number", 1), ("Type", "Integer"), (
+    "Description", "Quality values: if not defined a . otherwise the r")])
+out.header.add_meta("FORMAT", items=[
+                    ("ID", "TY"), ("Number", 1), ("Type", "String"), ("Description", "Types")])
+out.header.add_meta("FORMAT", items=[(
+    "ID", "ID"), ("Number", 1), ("Type", "String"), ("Description", "Variant ID from input")])
+out.header.add_meta("FORMAT", items=[("ID", "RAL"), ("Number", 1), (
+    "Type", "String"), ("Description", "Reference allele sequence reported from input")])
+out.header.add_meta("FORMAT", items=[("ID", "AAL"), ("Number", 1), ("Type", "String"), (
+    "Description", "Alternative allele sequence reported from input")])
+out.header.add_meta("FORMAT", items=[(
+    "ID", "CO"), ("Number", 1), ("Type", "String"), ("Description", "Coordinates")])
+out.header.add_meta("FORMAT", items=[("ID", "SC"), ("Number", 1), (
+    "Type", "Integer"), ("Description", "Levenshtein distance ratio to first sample")])
 
-out.header.add_meta("ALT", items = [("ID", "INS"), ("Description", "Insertion")])
+out.header.add_meta("ALT", items=[("ID", "INS"), ("Description", "Insertion")])
 
-out.header.add_meta("METHOD", value = signature)
+out.header.add_meta("METHOD", value=signature)
 
 sampleParams = {x: {"supportKey": "", "method": ""} for x in sampleList}
 
@@ -117,34 +184,34 @@ for i in range(len(sampleList)):
     vcf = vcfs[i]
     sample = sampleList[i]
 
-    exampleRecord = "" # Will be a VariantRecord instance
+    exampleRecord = ""  # Will be a VariantRecord instance
 
     for i in vcf:
         exampleRecord = i
-        break # We take the first one as an example
+        break  # We take the first one as an example
     if f"##METHOD={signature}" in str(vcf.header):
         sampleParams[sample]["method"] = signature
     if "RE" in exampleRecord.info.keys():
         sampleParams[sample]["supportKey"] = "RE"
     if "PE" in exampleRecord.info.keys():
         sampleParams[sample]["supportKey"] = "PE"
-    if "SUPPORT" in exampleRecord.info.keys() and sampleParams[sample] != signature :
+    if "SUPPORT" in exampleRecord.info.keys() and sampleParams[sample] != signature:
         sampleParams[sample]["supportKey"] = "SUPPORT"
 
 emptyGenotype = {
-                    "GT": "./.",
-                    "PSV": ".",
-                    "LN": None,
-                    "DR": (".", "."),
-                    "ST": ".",
-                    "QV": ".",
-                    "TY": ".",
-                    "ID": ".",
-                    "RAL": ".",
-                    "AAL": ".",
-                    "CO": ".",
-                    "SC": None,
-                }
+    "GT": (0, 0),
+    "PSV": ".",
+    "LN": None,
+    "DR": (None, None),
+    "ST": ".",
+    "QV": 0,
+    "TY": ".",
+    "ID": ".",
+    "RAL": ".",
+    "AAL": ".",
+    "CO": ".",
+    "SC": None,
+}
 genotypeFields = "GT:PSV:LN:DR:ST:QV:TY:ID:RAL:AAL:CO:SC".split(":")
 
 n = 0
@@ -154,7 +221,10 @@ for i in range(len(vcfs) - 1):
     sample = sampleList[i]
     others = vcfs[i + 1:]
 
-    print(sample)
+    # print(sample)
+    sampleN = len(list(vcf.header.samples))
+    hasGT = "GT" in vcf.header.formats.keys()
+    hasQV = "QV" in vcf.header.formats.keys()
 
     for var in vcf.fetch():
 
@@ -171,36 +241,45 @@ for i in range(len(vcfs) - 1):
         readSupport = 0
         if sampleParams[sample]["method"] == signature:
             readSupport = max([
-                int(x) if x.isnumeric() else -1
+                int(x) if isNumber(x) else -1
                 for x in [geno["DR"][1] for geno in var.samples.values()]
             ])
         elif sampleParams[sample]["supportKey"]:
             readSupport = var.info[sampleParams[sample]["supportKey"]]
         # See output header for description.
+
+        altField = var.alts[0].replace(":", "_") if var.alts else var.alts
+        if not altField:
+            print(var)
+            sys.exit("INS without ALT?")
+
         try:
+            gt, qv = (None, None), None
+            if singleSample:
+                gt, qv = getGtQv(var, sampleN, hasGT, hasQV)
             varFormat = {
-                "GT":
-                "./.",
+                "GT": gt,
                 "PSV": var.info['SUPP_VEC']
                 if "SUPP_VEC" in var.info.keys() else "NAN",
                 "LN": getInfoValue(var),
-                "DR": ("NA", str(readSupport)),
+                "DR": (None, readSupport),
                 "ST": "NAN",
-                "QV": "NaN",
+                "QV": qv,
                 "TY": "NaN",
                 "ID": var.id,
                 "RAL": var.ref,
-                "AAL": var.alts[0].replace(":", "_"),
+                "AAL": altField,
                 "CO": f"{var.chrom}_{var.pos}_{var.stop}",
                 "SC": 100,
                 'start': var.pos,
                 'end': var.stop,
             }
         except Exception as e:
-            print("moo")
-            print(var)
-            print(e)
-            sys.exit()
+            print(traceback.format_exc())
+            print(var.alts)
+            sys.exit(
+                f"Error when creating genotype column at sample {sample} for var\n{var}."
+            )
         result = {
             "info":
             dict([
@@ -237,8 +316,8 @@ for i in range(len(vcfs) - 1):
             candidates = list(
                 filter(
                     lambda x:
-                        x.info["SVTYPE"] == var.info["SVTYPE"] and \
-                            abs(svLen - getInfoValue(x, toInt = 1)) < svLenToCompare,
+                        x.info["SVTYPE"] == var.info["SVTYPE"] and
+                    abs(svLen - getInfoValue(x, toInt=1)) < svLenToCompare,
                     candidates)
             )
             if not candidates:
@@ -251,15 +330,15 @@ for i in range(len(vcfs) - 1):
                         getInfoValue(x, toInt=1) - var.info["SVLEN"]))  # !
             except:
                 print(var.info["SVLEN"])
-                sys.exit()
+                sys.exit(
+                    f"Could not sort candidates in sample {sample} for variant\n{var}"
+                )
             if considerSeq:
                 alns = [{
                     "candidate": x,
-                    "aln": globAlign(var.alts[0], x.alts[0])
+                    "aln": globAlign(altField, x.alts[0])
                 } for x in candidates]
-                chosen = max(
-                    alns, key=lambda x: x["aln"].score
-                )
+                chosen = max(alns, key=lambda x: x["aln"].score)
                 cand = chosen["candidate"]
                 if chosen["aln"].score < svScoreToCompare:
                     result["samples"][sampleToCompare] = emptyGenotype
@@ -276,25 +355,29 @@ for i in range(len(vcfs) - 1):
             readSupport = 0
             if sampleParams[sampleToCompare]["method"] == signature:
                 readSupport = max([
-                    int(x) if x.isnumeric() else -1
+                    int(x) if isNumber(x) else -1
                     for x in [geno["DR"][1] for geno in cand.samples.values()]
                 ])
             elif sampleParams[sampleToCompare]["supportKey"]:
                 readSupport = cand.info[sampleParams[sampleToCompare]
                                         ["supportKey"]]
+
+            gt, qv = (None, None), None
+            if singleSample:
+                gt, qv = getGtQv(cand, len(list(cand.samples)), "GT" in cand.header.formats.keys(), "QV" in cand.header.formats.keys())
             result["samples"][sampleToCompare] = {
                 "GT":
-                "./.",
+                gt,
                 "PSV":
                 cand.info['SUPP_VEC']
                 if "SUPP_VEC" in cand.info.keys() else "NAN",
                 "LN":
                 getInfoValue(cand),
-                "DR": ("NA", str(readSupport)),
+                "DR": (None, readSupport),
                 "ST":
                 "NAN",
                 "QV":
-                "NaN",
+                qv,
                 "TY":
                 "NaN",
                 "ID":
@@ -343,32 +426,28 @@ for i in range(len(vcfs) - 1):
             try:
                 record.info[field] = value
             except:
-                print(field, value)
-                sys.exit()
+                sys.exit(
+                    f"Error when setting INFO field {field} for sample {sample} at variant\n{var}"
+                )
         for sampleName, sampleGeno in result["samples"].items():
             for field in genotypeFields:
                 try:
                     record.samples[sampleName][field] = sampleGeno[field]
                 except:
-                    print(sampleGeno)
-                    print(field, sampleGeno[field])
-                    sys.exit()
+                    print(traceback.format_exc())
+                    sys.exit(
+                        f"Error when setting {field} with value {sampleGeno[field]} at column for sample {sampleName} for var\n{var}"
+                    )
 
         out.write(record)
 
 print("Finished all but last VCF")
 
-#last vcf
+# last vcf
 sample = sampleList[-1]
-print("This is i")
-print(i)
-if not isinstance(i, int):
-    i = len(vcfs) - 1
-print(f"i is now {i}")
-i += 1
-print(f"i is now {i}")
 print("last sample:", sample)
-for var in vcfs[-1].fetch(): # Add the unmatched vars for the last one
+for var in vcfs[-1].fetch():  # Add the unmatched vars for the last one
+    i = len(vcfs)
     # For index in lists, etc.
     uid = f"{sample}_{var.id}"
 
@@ -383,19 +462,27 @@ for var in vcfs[-1].fetch(): # Add the unmatched vars for the last one
     readSupport = 0
     if sampleParams[sample]["method"] == signature:
         readSupport = max([
-                int(x)
-                if x.isnumeric() else -1
-                for x in [geno["DR"][1] for geno in var.samples.values()]
-            ])
+            int(x)
+            if isNumber(x) else -1
+            for x in [geno["DR"][1] for geno in var.samples.values()]
+        ])
     elif sampleParams[sample]["supportKey"]:
-        readSupport = var.info[ sampleParams[sample]["supportKey"] ]
+        readSupport = var.info[sampleParams[sample]["supportKey"]]
+    try:
+        gt, qv = (None, None), None
+        if singleSample:
+            gt, qv = getGtQv(var, sampleN, hasGT, hasQV)
+    except:
+        print(traceback.format_exc())
+        sys.exit(
+            f"Encountered error when processing genotypes for (last) sample {sample} at var\n{var}")
     varFormat = {
-        "GT": "./.",
+        "GT": gt,
         "PSV": var.info['SUPP_VEC'] if "SUPP_VEC" in var.info.keys() else "NAN",
         "LN": getInfoValue(var),
-        "DR": ("NA", str(readSupport)),
+        "DR": (None, readSupport),
         "ST": "NAN",
-        "QV": "NaN",
+        "QV": qv,
         "TY": "NaN",
         "ID": var.id,
         "RAL": var.ref,
@@ -411,46 +498,39 @@ for var in vcfs[-1].fetch(): # Add the unmatched vars for the last one
             ("SVTYPE", var.info["SVTYPE"]),
             ("SVMETHOD", "merge.py"),
         ]),
-        "samples": {sample: varFormat} # length of samples
+        "samples": {sample: varFormat}  # length of samples
     }
 
-    for j in range(len(vcfs) - 1): # other samples
+    for j in range(len(vcfs) - 1):  # other samples
         # These variants have already been checked so we only need to add the empty genotypes
         sampleToCompare = sampleList[j]
-        result["samples"][sampleToCompare] = {
-            "GT": "./.",
-            "DR": (".", "."),
-            "PSV": ".",
-            "ST": ".",
-            "QV": ".",
-            "TY": ".",
-            "ID": ".",
-            "RAL": ".",
-            "AAL": ".",
-            "CO": "."
-        }
+        result["samples"][sampleToCompare] = emptyGenotype
     try:
-        record = out.new_record(contig = var.chrom, start = var.start - 1, stop = var.stop,
-            alleles = (var.ref, var.alts[0]), filter = "PASS",
-            id = str(n),
-        )
-    except Exception as e:
-        print(e)
-        print(var)
+        record = out.new_record(contig=var.chrom, start=var.start - 1, stop=var.stop,
+                                alleles=(var.ref, var.alts[0]), filter="PASS",
+                                id=str(n),
+                                )
+    except:
+        print(traceback.format_exc())
+        sys.exit(f"Error when writing record for last sample for var\n{var}")
     n += 1
     for field, value in result["info"].items():
         try:
             record.info[field] = value
-        except Exception as e:
-            traceback.print_stack()
-            continue
+        except:
+            print(traceback.format_exc())
+            sys.exit(
+                    f"Error when setting INFO field {field} for sample {sample} at variant\n{var}"
+                )
     for sampleName, sampleGeno in result["samples"].items():
         for field, value in sampleGeno.items():
             try:
                 record.samples[sampleName][field] = value
             except Exception as e:
-                traceback.print_stack()
-                continue
+                print(traceback.format_exc())
+                sys.exit(
+                    f"Error when setting {field} with value {sampleGeno[field]} for sample {sampleName} (at last var) for var\n{var}"
+                )
 
     out.write(record)
 
