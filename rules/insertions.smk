@@ -79,7 +79,7 @@ rule mosdepth_for_genotyping_ins:
   shell:
     """
     mosdepth -t {threads} -Q 20 -n -b {input.mosdepthBed} \
-    {params.prefix} {input.bam} 1>&2 2> {log}
+    {params.prefix} {input.bam} &> {log}
     """
 
 rule genotype:
@@ -92,6 +92,7 @@ rule genotype:
   output: 
     vcf = "variants/{sample}.merged.both.vcf", #! amke temp
   script: "../scripts/genotype.py"
+
 rule sort_index_vcf:
   conda: "../env.yaml"
   input: 

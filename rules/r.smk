@@ -33,25 +33,6 @@ rule analysis_preparatory:
   script:
     "../scripts/analysisPreparatory.R"
 
-rule mosdepth_for_genotyping_del:
-  conda: "../env.yaml"
-  log:
-    "logs/mosdepth/{sample}.del.log"
-  threads: 4
-  input:
-    mosdepthBed = rules.analysis_preparatory.output.deletionsBed,
-    bam = "alns/{sample}.bam",
-    bai = "alns/{sample}.bam.bai",
-  output:
-    "mosdepth/{sample}.del.regions.bed.gz"
-  params:
-    prefix = "mosdepth/{sample}.del"
-  shell:
-    """
-    mosdepth -t {threads} -Q 20 -n -b {input.mosdepthBed} \
-    {params.prefix} {input.bam} 1>&2 2> {log}
-    """
-
 rule analysis_genotyping:
   conda: "../r.yaml"
   log:

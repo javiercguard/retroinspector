@@ -12,8 +12,8 @@ rule run_survivor_intrasample:
       "variants/cutesv/{sample}.cutesv.vcf.gz.csi",
       ],
   output: 
-    vcf = "variants/survivor/{sample}.merged.survivor.vcf.gz",
-    index = "variants/survivor/{sample}.merged.survivor.vcf.gz.csi",
+    vcf = "tmp/{sample}.merged.survivor.ungenotyped.vcf", #! make temp
+    # index = "variants/survivor/{sample}.merged.survivor.vcf.gz.csi",
   params:
     distance = config["survivorInsertionDistanceLimitIntraPatient"],
   shell:
@@ -23,7 +23,64 @@ rule run_survivor_intrasample:
       -c 1 \
       -l 1 \
       -o {output.vcf} 2> {log}; \
-    bcftools index {output.vcf} 2>> {log}
+    """
+    # bcftools index {output.vcf} 2>> {log}
+
+rule create_mosdepth_bed_del:
+  conda: "../env.yaml"
+  log:
+    "logs/geno/{sample}.createBed.del.log"
+  input:
+    vcf = "tmp/{sample}.merged.survivor.ungenotyped.vcf",
+  output:
+    bed = "tmp/{sample}.del.bed", #! make temp
+  params:
+    svType = "DEL",
+  script: "../scripts/vcfToBedForMosdepth.py"
+
+rule mosdepth_for_genotyping_del:
+  conda: "../env.yaml"
+  log:
+    "logs/mosdepth/{sample}.del.log"
+  threads: 4
+  input:
+    mosdepthBed = "tmp/{sample}.del.bed",
+    bam = "alns/{sample}.bam",
+    bai = "alns/{sample}.bam.bai",
+  output:
+    "mosdepth/{sample}.del.regions.bed.gz",
+  params:
+    prefix = "mosdepth/{sample}.del",
+  shell:
+    """
+    mosdepth -t {threads} -Q 20 -n -b {input.mosdepthBed} \
+    {params.prefix} {input.bam} &> {log}
+    """
+
+rule genotype_del:
+  conda: "../env.yaml"
+  log:
+    "logs/geno/{sample}.geno.del.log"
+  input:
+    coverage = "mosdepth/{sample}.del.regions.bed.gz",
+    vcf = "tmp/{sample}.merged.survivor.ungenotyped.vcf",
+  output: 
+    vcf = "variants/survivor/{sample}.merged.survivor.vcf", #! make temp
+  params:
+    svType = "DEL"
+  script: "../scripts/genotype.py"
+
+rule sort_index_vcf_del:
+  conda: "../env.yaml"
+  input: 
+    "variants/survivor/{sample}.merged.survivor.vcf",
+  output:
+    "variants/survivor/{sample}.merged.survivor.vcf.gz",
+    "variants/survivor/{sample}.merged.survivor.vcf.gz.csi",
+  shell:
+    """
+    bcftools sort -O z -o {output[0]} {input[0]}
+    bcftools index {output[0]}
     """
 
 rule run_survivor_intersample:

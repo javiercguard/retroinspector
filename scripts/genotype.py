@@ -72,11 +72,17 @@ def isNumber(x):
         return False
 
 def main(snakemake):
+    svType = ""
+    if "svType" in snakemake.params.keys():
+        svType = snakemake.params["svType"]
     coverages = readCoverage(snakemake.input.coverage)
     with VariantFile(snakemake.input.vcf) as vcf, \
             VariantFile(snakemake.output.vcf, 'w', header=vcf.header) as out:
         samples = list(vcf.header.samples)
         for record in vcf.fetch():
+            if svType and svType != record.info["SVTYPE"]:
+                out.write(record)
+                continue
             try:
                 support = [record.samples[x]["DR"][1]
                         for x in samples]  # second value, support for SV
