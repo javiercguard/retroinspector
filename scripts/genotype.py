@@ -1,8 +1,7 @@
 #! /usr/env/python3
 
-import math
+import gzip, math, sys, traceback
 
-import gzip
 from pysam import VariantFile
 
 
@@ -75,6 +74,7 @@ def main(snakemake):
     svType = ""
     if "svType" in snakemake.params.keys():
         svType = snakemake.params["svType"]
+    print(svType)
     coverages = readCoverage(snakemake.input.coverage)
     with VariantFile(snakemake.input.vcf) as vcf, \
             VariantFile(snakemake.output.vcf, 'w', header=vcf.header) as out:
@@ -90,12 +90,10 @@ def main(snakemake):
                             for sup in support ]
                 for i, (geno, qual) in enumerate(genotypes):
                     record.samples[i]["GT"] = geno
-                    record.samples[i]["QV"] = qual
+                    record.samples[i]["QV"] = str(qual)
             except:
-                print(record)
-                import sys, traceback
                 print(traceback.format_exc())
-                sys.exit()
+                sys.exit(f"Error while genotyping\n{record}")
             out.write(record)
 
 

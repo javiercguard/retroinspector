@@ -171,7 +171,6 @@ if (F) {
 allIns = readRDS(snakemake@input[["allIns"]])
 insertionsTable = readRDS(snakemake@input[["insertionsTable"]])
 annotatedInsertionsMin3 = readRDS(snakemake@input[["annotatedInsertionsMin3"]])
-observedMafTable = readRDS(snakemake@input[["observedMafTable"]])
 
 chrs = paste0("chr", c(1:22, "X", "Y")) # Human chromosomes used to filter out Unknown and Random fragments
 class1 = c("Retroposon", "SINE", "LINE", "LTR") # Families of class I elements
@@ -212,17 +211,17 @@ The stringent criterion (both callers) has left:
 ## Genotyping
 
 ```{r genotypeVsTrusty, include = F}
-hasAlleleleMask = observedMafTable$genotype %>% 
+hasAlleleleMask = insertionsTable$genotype %>% 
   lapply(`>=`, y = 1)
 
 strictWithoutAllelesMask = mapply(function (x, y) {!x & y},
-                                  hasAlleleleMask, observedMafTable$SUPP_mask_trusty,
+                                  hasAlleleleMask, insertionsTable$SUPP_mask_trusty,
                                   SIMPLIFY = F
 )
 strictWithoutAlleles = strictWithoutAllelesMask %>% # was detected by trusty but genotyped as 0/0
   lapply(as.numeric) %>% lapply(sum) # sum of the cases where it happens per INS
 strictWithFalsePositivesMask = strictWithoutAlleles >= 1
-strictWithFalsePositives = observedMafTable[strictWithFalsePositivesMask]
+strictWithFalsePositives = insertionsTable[strictWithFalsePositivesMask]
 # This variables are for the text:
 # There are <<w>> unique INS with all false positives,
 # which amount up to <<W>> occurrences.
@@ -242,16 +241,16 @@ w_tick =
 genotypeBenchmarkTable = data.table(
   criterion = "Strict",
   falsePos = nrow(strictWithFalsePositives), 
-  falsePosPercent = nrow(strictWithFalsePositives) / nrow(observedMafTable[SUPP_trusty >= 1]) * 100,
+  falsePosPercent = nrow(strictWithFalsePositives) / nrow(insertionsTable[SUPP_trusty >= 1]) * 100,
   occurrences = sum(unlist(strictWithoutAlleles[strictWithFalsePositivesMask])),
-  occurrencesPercent = sum(unlist(strictWithoutAlleles[strictWithFalsePositivesMask])) / sum(observedMafTable$SUPP_trusty) * 100,
+  occurrencesPercent = sum(unlist(strictWithoutAlleles[strictWithFalsePositivesMask])) / sum(insertionsTable$SUPP_trusty) * 100,
   all0.0 = w,
   all0.0Occur = W)
 ```
 
 - `r nrow(strictWithFalsePositives)` unique insertions that passed the stringent filtering.
-(`r nrow(strictWithFalsePositives) / nrow(observedMafTable[SUPP_trusty >= 1]) * 100`% of the total unique insertions), had at least one occurrence genotyped as 0/0.
-- These amount to `r sum(unlist(strictWithoutAlleles[strictWithFalsePositivesMask]))` total count (`r sum(unlist(strictWithoutAlleles[strictWithFalsePositivesMask])) / sum(observedMafTable$SUPP_trusty) * 100`% of filter-passing occurrences).
+(`r nrow(strictWithFalsePositives) / nrow(insertionsTable[SUPP_trusty >= 1]) * 100`% of the total unique insertions), had at least one occurrence genotyped as 0/0.
+- These amount to `r sum(unlist(strictWithoutAlleles[strictWithFalsePositivesMask]))` total count (`r sum(unlist(strictWithoutAlleles[strictWithFalsePositivesMask])) / sum(insertionsTable$SUPP_trusty) * 100`% of filter-passing occurrences).
 - `r w` of these unique insertions were genotyped as 0/0 for all their occurrences, amounting to 
 `r W` insertion counts. 
 - Of these fully wrong calls, `r w_tick` were only found on a single patient each (`r w_tick / w * 100`% of the 
@@ -260,27 +259,27 @@ genotypeBenchmarkTable = data.table(
 ```{r genotypeVsMin3, echo = F, include = F}
 allelesWithoutStrictMask =
   mapply(function (x, y, z) {z >= 1 & x & !y},
-         hasAlleleleMask, observedMafTable$SUPP_mask_trusty, observedMafTable$SUPP_trusty,
+         hasAlleleleMask, insertionsTable$SUPP_mask_trusty, insertionsTable$SUPP_trusty,
          SIMPLIFY = F
   )
 allelesWithoutStrict = allelesWithoutStrictMask %>% # was detected by trusty but genotyped as 0/0
   lapply(as.numeric) %>% lapply(sum) # sum of the cases where it happens per INS
 strictWithFalseNegativesMask = allelesWithoutStrict >= 1
-strictWithFalseNegatives = observedMafTable[strictWithFalseNegativesMask]
+strictWithFalseNegatives = insertionsTable[strictWithFalseNegativesMask]
 w = (allelesWithoutStrict[strictWithFalseNegativesMask] %>% unlist() >= strictWithFalseNegatives$SUPP_trusty) %>% as.numeric() %>% sum()
 genotypeBenchmarkTable[
   , `:=`(
     falseNeg = nrow(strictWithFalseNegatives),
-    falseNegPercent = nrow(strictWithFalseNegatives) / nrow(observedMafTable[SUPP_trusty >= 1]) * 100,
+    falseNegPercent = nrow(strictWithFalseNegatives) / nrow(insertionsTable[SUPP_trusty >= 1]) * 100,
     falseNegOcc = sum(unlist(allelesWithoutStrict[strictWithFalseNegativesMask])),
-    callsThatPassed = sum(observedMafTable$SUPP_trusty),
+    callsThatPassed = sum(insertionsTable$SUPP_trusty),
     moreWrongThanRight = w
   )
 ]
 ```
 
-- The strict criteria missed calls for `r nrow(strictWithFalseNegatives)` unique insertions (`r nrow(strictWithFalseNegatives) / nrow(observedMafTable[SUPP_trusty >= 1]) * 100`%).
-- These mean a total of `r sum(unlist(allelesWithoutStrict[strictWithFalseNegativesMask]))` occurrences, out of `r sum(observedMafTable$SUPP_trusty)` calls that passed the stringent filter.
+- The strict criteria missed calls for `r nrow(strictWithFalseNegatives)` unique insertions (`r nrow(strictWithFalseNegatives) / nrow(insertionsTable[SUPP_trusty >= 1]) * 100`%).
+- These mean a total of `r sum(unlist(allelesWithoutStrict[strictWithFalseNegativesMask]))` occurrences, out of `r sum(insertionsTable$SUPP_trusty)` calls that passed the stringent filter.
 - `r w` unique insertions had more false negative occurrences than positive ones.
 
 The discrepancies between genotyping and the lax filtering is also summarized in the table below.
@@ -291,13 +290,13 @@ The discrepancies between genotyping and the lax filtering is also summarized in
   # False positives of min3
   # hasAlleleleMask can be reused
   min3WithoutAllelesMask = mapply(function (x, y) {!x & y},
-           hasAlleleleMask, observedMafTable$SUPP_mask_min3,
+           hasAlleleleMask, insertionsTable$SUPP_mask_min3,
            SIMPLIFY = F
            )
   min3WithoutAlleles = min3WithoutAllelesMask %>% # was detected by min3 but genotyped as 0/0
      lapply(as.numeric) %>% lapply(sum) # sum of the cases where it happens per INS
   laxWithFalsePositivesMask = min3WithoutAlleles >= 1
-  laxWithFalsePositives = observedMafTable[laxWithFalsePositivesMask]
+  laxWithFalsePositives = insertionsTable[laxWithFalsePositivesMask]
   w = (min3WithoutAlleles[laxWithFalsePositivesMask] %>% unlist() == laxWithFalsePositives$SUPP_min3) %>% as.numeric() %>% sum()
   # w had all of their min3 supports as false positives
   W = laxWithFalsePositives[min3WithoutAlleles[laxWithFalsePositivesMask] %>% unlist() == laxWithFalsePositives$SUPP_min3]$SUPP_min3 %>% sum()
@@ -312,9 +311,9 @@ The discrepancies between genotyping and the lax filtering is also summarized in
   genotypeBenchmarkLax = data.table(
     criterion = "Lax",
     falsePos = nrow(laxWithFalsePositives), 
-    falsePosPercent = nrow(laxWithFalsePositives) / nrow(observedMafTable[SUPP_min3 >= 1]) * 100,
+    falsePosPercent = nrow(laxWithFalsePositives) / nrow(insertionsTable[SUPP_min3 >= 1]) * 100,
     occurrences = sum(unlist(min3WithoutAlleles[laxWithFalsePositivesMask])),
-    occurrencesPercent = sum(unlist(min3WithoutAlleles[laxWithFalsePositivesMask])) / sum(observedMafTable$SUPP_min3) * 100,
+    occurrencesPercent = sum(unlist(min3WithoutAlleles[laxWithFalsePositivesMask])) / sum(insertionsTable$SUPP_min3) * 100,
     all0.0 = w,
     all0.0Occur = W
   )
@@ -323,13 +322,13 @@ The discrepancies between genotyping and the lax filtering is also summarized in
   # hasAlleleleMask can be reused
   allelesWithoutMin3Mask =
     mapply(function (x, y, z) {z >= 1 & x & !y},
-           hasAlleleleMask, observedMafTable$SUPP_mask_min3, observedMafTable$SUPP_min3,
+           hasAlleleleMask, insertionsTable$SUPP_mask_min3, insertionsTable$SUPP_min3,
            SIMPLIFY = F
            )
   allelesWithoutMin3 = allelesWithoutMin3Mask %>% # was detected by min3 but genotyped as 0/0
      lapply(as.numeric) %>% lapply(sum) # sum of the cases where it happens per INS
   laxWithFalseNegativesMask = allelesWithoutMin3 >= 1
-  laxWithFalseNegatives = observedMafTable[laxWithFalseNegativesMask]
+  laxWithFalseNegatives = insertionsTable[laxWithFalseNegativesMask]
   w = (allelesWithoutMin3[laxWithFalseNegativesMask] %>% unlist() >= laxWithFalseNegatives$SUPP_min3) %>% as.numeric() %>% sum()
   # w uniques had more false negatives than positives
   # W = allelesWithoutMin3[laxWithFalseNegativesMask] %>% unlist() %>% sum()
@@ -338,9 +337,9 @@ The discrepancies between genotyping and the lax filtering is also summarized in
   genotypeBenchmarkLax[
   , `:=`(
     falseNeg = nrow(laxWithFalseNegatives),
-    falseNegPercent = nrow(laxWithFalseNegatives) / nrow(observedMafTable[SUPP_min3 >= 1]) * 100,
+    falseNegPercent = nrow(laxWithFalseNegatives) / nrow(insertionsTable[SUPP_min3 >= 1]) * 100,
     falseNegOcc = sum(unlist(allelesWithoutMin3[strictWithFalseNegativesMask])),
-    callsThatPassed = sum(observedMafTable$SUPP_min3),
+    callsThatPassed = sum(insertionsTable$SUPP_min3),
     moreWrongThanRight = w
   )]
   genotypeBenchmarkTable = rbind(genotypeBenchmarkTable, genotypeBenchmarkLax)[,
@@ -377,13 +376,13 @@ allFalsePositivesIds = strictWithFalsePositives[strictWithoutAlleles[strictWithF
 allIns = allIns[repeat.class %in% c(class1, class2) & repeat.percentage >= 0.85 & !seqId %in% allFalsePositivesIds]
 insertionsTable = insertionsTable[!seqId %in% allFalsePositivesIds]
 annotatedInsertionsMin3 = annotatedInsertionsMin3[!seqId %in% allFalsePositivesIds]
-observedMafTable = observedMafTable[!seqId %in% allFalsePositivesIds]
+insertionsTable = insertionsTable[!seqId %in% allFalsePositivesIds]
 ```
 
 ### Allele frequency
 
 ```{r results="asis"}
-ubiquitous = observedMafTable[maf == 1]
+ubiquitous = insertionsTable[maf == 1]
 if (nrow(ubiquitous) != 0) {
   cat("\n\n### Ubiquitous TE insertions\n\n")
   cat("\n\n#### Ubiquitous TE insertions\n\n")
@@ -407,12 +406,12 @@ if (nrow(ubiquitous) != 0) {
 
 <br/>
 
-- `r observedMafTable[maf >= 0.5 & SUPP_trusty > 0] %>% nrow()` TE insertions were found with an AF ≥ 0.5. 
+- `r insertionsTable[maf >= 0.5 & SUPP_trusty > 0] %>% nrow()` TE insertions were found with an AF ≥ 0.5. 
 
 A Manhattan plot of AFs is shown below.
 
 ```{r fig.align="center", fig.cap="Allele frequency is shown for insertions for each chromosome. Each dot marks a different insertion."}
-copy = copy(observedMafTable[SUPP_trusty > 0])[, `:=`(seqnames = seqnames %>% as.numeric())]
+copy = copy(insertionsTable[SUPP_trusty > 0])[, `:=`(seqnames = seqnames %>% as.numeric())]
 qqman::manhattan(
   copy,
   chr = "seqnames",
@@ -722,7 +721,6 @@ It is common to find deletions whose coordinates match those of a TE sequence in
 
 ```{r}
 meDeletionsMin3 = readRDS(snakemake@input[["meDeletionsMin3"]])
-genotypedDeletions = readRDS(snakemake@input[["genotypedDeletions"]])
 ```
 
 - `r meDeletionsMin3[SUPP_trusty > 0] %>% nrow()` TE deletions have been found, adding up to `r meDeletionsMin3[SUPP_trusty > 0]$SUPP_trusty %>% sum()` occurrences among cases.
@@ -732,17 +730,17 @@ genotypedDeletions = readRDS(snakemake@input[["genotypedDeletions"]])
 
 ## Allele frequency
 
-- The mean AF for deletions is `r genotypedDeletions[SUPP_trusty > 0]$maf %>% mean()` ± `r genotypedDeletions[SUPP_trusty > 0]$maf %>% sd()` (median of `r genotypedDeletions[SUPP_trusty > 0]$maf %>% median()`).
-- With `r genotypedDeletions[SUPP_trusty > 0 & maf == 1] %>% nrow()` (`r genotypedDeletions[maf == 1 & SUPP_trusty > 0] %>% nrow()` of which has passed the stringent filtering) deletions appearing in a homozygous state in all patients (Fig. 7). On the other hand, `r genotypedDeletions[maf == 0 & SUPP_trusty > 0] %>% nrow()` deletions were genotyped as 0/0 on all cases, and have not been included in the rest of this section.
+- The mean AF for deletions is `r meDeletionsMin3[SUPP_trusty > 0]$maf %>% mean()` ± `r meDeletionsMin3[SUPP_trusty > 0]$maf %>% sd()` (median of `r meDeletionsMin3[SUPP_trusty > 0]$maf %>% median()`).
+- With `r meDeletionsMin3[SUPP_trusty > 0 & maf == 1] %>% nrow()` (`r meDeletionsMin3[maf == 1 & SUPP_trusty > 0] %>% nrow()` of which has passed the stringent filtering) deletions appearing in a homozygous state in all patients (Fig. 7). On the other hand, `r meDeletionsMin3[maf == 0 & SUPP_trusty > 0] %>% nrow()` deletions were genotyped as 0/0 on all cases, and have not been included in the rest of this section.
 
 ```{r}
-genotypedDeletions = genotypedDeletions[!(maf == 0 & SUPP_trusty > 0)]
-genotypedDeletions = genotypedDeletions[stri_order(seqnames, numeric = T)]
-meDeletionsMin3 = meDeletionsMin3[id %in% genotypedDeletions$id]
+meDeletionsMin3 = meDeletionsMin3[!(maf == 0 & SUPP_trusty > 0)]
+meDeletionsMin3 = meDeletionsMin3[stri_order(seqnames, numeric = T)]
+meDeletionsMin3 = meDeletionsMin3[id %in% meDeletionsMin3$id]
 ```
 
 ```{r fig.align="center",fig.cap="Allele frequency is shown for TE deletions for each chromosome. Each dot marks a different deletion"}
-copy = copy(genotypedDeletions[SUPP_trusty > 0])[, `:=`(
+copy = copy(meDeletionsMin3[SUPP_trusty > 0])[, `:=`(
     seqnames = factor(seqnames, levels = chrs) %>% as.numeric()
   )]
 qqman::manhattan(
@@ -847,7 +845,9 @@ for (x in c("MF", "BP", "CC")) {
     get(name),
     showCategory = 30,
     cex.params = list(category_label = 0.5, gene_label = 0.5),
-    node_label = "gene" 
+    node_label = "gene"
+    # this version of the package has this parameter inverted
+    # by writing this we are actually displaying categories
   ) %>% print()
 }
 ```

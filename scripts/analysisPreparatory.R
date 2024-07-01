@@ -13,12 +13,14 @@ selectedPatients = snakemake@params[["samples"]]
 # ----
 
 if (F) {
-  saveRDS(snakemake, "/pool_discos_hdd/data/datos-javier/retropip/snk.rds")
+  # For debugging
+  saveRDS(snakemake, "~/path/snk2.rds")
   q()
+  snakemake = readRDS("~/path/snk2.rds")
+  setwd("~/path/")
 }
 if (F) {
-  snakemake = readRDS("/pool_discos_hdd/data/datos-javier/retropip/snk.rds")
-  setwd("~/datos-javier/retropip_out/")
+  snakemake = readRDS("~/ontology/proj/public5/snk.rds")
 }
 
 # Annotation is generated and exported
@@ -93,13 +95,13 @@ if (T) {
   print("Annotated")
   # Generating the usable datasets: min3 and trusty, lax and strict critera, respectively
   genoFields = c("GT", "PSV", "LN", "DR", "ST", "QV", "TY", "ID", "RAL", "AAL", "CO", "SC")
-  genoFieldsOfInt = c("PSV", "DR") # Used for counting occurrence and genotyping
-  pos = which(genoFields %in% genoFieldsOfInt) # THe position of "PSV" and "DR" in the genotype columns
+  genoFieldsOfInt = c("GT", "PSV", "DR") # Used for counting occurrence and genotyping
+  pos = which(genoFields %in% genoFieldsOfInt) # The position of "PSV" and "DR" in the genotype columns
 
   for (col in colnames(repeatMaskerTable[1, .SD, .SDcols = patterns(
     paste0("^(" , paste0(paste0("id", selectedPatients %>% stri_replace_all_fixed(., pattern = "-", replacement = ".")), collapse = "|"), ")$")
     )]) ) {
-    # create columns for PSV and DR for each patient
+    # create columns for GT, PSV and DR for each patient
     repeatMaskerTable[, paste0(col, "_", genoFieldsOfInt) := tstrsplit(.SD[[col]], ":", fixed = T, keep = pos)]
     # keep second value of DR, which is the one supporting the INS
     # Variant callers dont consistently report the support for the reference allele
@@ -111,10 +113,10 @@ if (T) {
         ] # This will warn about NA by coercion, which are not included in the data.table
   }
 
-  # Take the DR columns, create a bool vector, make it numeric, assign as column
+  # Take the DR columns, create a bool vector with DR >=3, make it numeric (1 or 0), assign as column
+  # this creates a column with the lax criterion
+  # stored as numeric for addition
   repeatMaskerTable[, SUPP_VEC_min3 := apply(.SD, 2, `>=`, y = 3) %>% apply(., 2, as.integer) %>% apply(., 1, paste0, collapse = ""), .SDcols = grep(pattern = "_DR$", colnames(repeatMaskerTable))]
-  # For every INS, we have created a bool column containing the min3 criterion
-
   repeatMaskerTable[, SUPP_min3 := stri_count_fixed(SUPP_VEC_min3, "1")] # Count SUPPORT with the min3 criteria
 
   # Initialize the column with only the two callers criteria
@@ -136,13 +138,12 @@ if (T) {
     lapply (1:length(a), function (i) {
       a2 = unlist( strsplit(a[[i]], split = "", fixed = T) )
       b2 = unlist( strsplit(b[[i]], split = "", fixed = T) )
-
       paste0(ifelse(a2 == b2 & a2 == "1", "1", "0"), collapse = "")
     }
     )
   }
 
-  # Now we do both callers AND min3 -> strict criteria
+  # Now we do both callers AND min3 -> strict criterion
   correctTrusty = unlist( bitwiseAndStr(repeatMaskerTable$SUPP_VEC_min3, repeatMaskerTable$SUPP_VEC_trusty) )
   repeatMaskerTable[, SUPP_VEC_trusty := correctTrusty]
   rm(correctTrusty)
@@ -151,20 +152,43 @@ if (T) {
   # We will also need the INS' length
   repeatMaskerTable[, SVLEN := as.numeric(gsub(".*SVLEN=([^;]+);.*", "\\1", vcf_info))]
 
+  # We extract the genotype from the columns and store it as numeric
+  # 0 is hom. ref., 1 is het., 2 is hom. alt.
+  for (col in colnames(repeatMaskerTable[1, .SD, .SDcols = patterns("_GT$")])) {
+    repeatMaskerTable[, (col) := get(col) %>%
+                                   lapply(function (x) {
+                                     x %>%
+                                       strsplit(split = "/", fixed = T) %>%
+                                       unlist() %>%
+                                       as.numeric() %>%
+                                       sum()
+                                   }) %>% unlist()]
+  }
+  repeatMaskerTable[
+    , genotype := .SD %>% 
+      simplify2array() %>% 
+      t() %>% 
+      split(., rep(1:ncol(.), each = nrow(.))) %>% 
+      unname(), 
+    .SDcols = grep(pattern = "_GT$", colnames(repeatMaskerTable))]
+  repeatMaskerTable[, SUPP_VEC_geno := genotype %>% lapply(`>=`, y = 1)]
+  repeatMaskerTable[, SUPP_geno := SUPP_VEC_geno %>% lapply(sum) %>% unlist()] # Count SUPPORT with the min3 criteria
+  repeatMaskerTable[, maf := genotype %>% lapply(function(x) sum(x) / (length(samples) * 2 ) ) %>% unlist() ] # humans are diploid, thus the length() * 2
   # A vector column of supports from callers, for genotyping
-  supports = repeatMaskerTable[, .SD, .SDcols = grep("DR$", colnames(repeatMaskerTable))]
-  supportColumn = supports %>% as.matrix() %>% t() %>% split(rep(1:ncol(.), each = nrow(.)))
-  repeatMaskerTable[, support := supportColumn]
-  rm(supports, supportColumn) ; gc()
+  # supports = repeatMaskerTable[, .SD, .SDcols = grep("DR$", colnames(repeatMaskerTable))]
+  # supportColumn = supports %>% as.matrix() %>% t() %>% split(rep(1:ncol(.), each = nrow(.)))
+  # repeatMaskerTable[, support := supportColumn]
+  # rm(supports, supportColumn) ; gc()
+
   # Create vector bool columns
-  suppMin3 = repeatMaskerTable$SUPP_VEC_min3
-  repeatMaskerTable[, SUPP_mask_min3 := suppMin3 %>%
+  repeatMaskerTable[, SUPP_mask_min3 := SUPP_VEC_min3 %>%
               lapply(strsplit, split = "") %>%
               lapply(function(x)as.logical(as.numeric(unlist(x))))]
-  suppTrusty = repeatMaskerTable$SUPP_VEC_trusty
-  repeatMaskerTable[, SUPP_mask_trusty := suppTrusty %>%
+  repeatMaskerTable[, SUPP_mask_trusty := SUPP_VEC_trusty %>%
               lapply(strsplit, split = "") %>%
               lapply(function(x)as.logical(as.numeric(unlist(x))))]
+  repeatMaskerTable[, SUPP_mask_geno := SUPP_VEC_geno %>%
+                      lapply(as.logical)]
 
   repeatMaskerTable[, # split level2-level3 and replace NA for level 3 with "-"
     c("repeat.subclass", "repeat.family") := stri_match_all_regex(repeat.subclass, "([^-]+)(?:-([^-]+))?$") %>% rapply(., f = `[`, ... = 2:3, how = "r") %>%
@@ -173,14 +197,14 @@ if (T) {
   # Remove unnecessary columns
   repeatMaskerTable[, grep("^id", colnames(repeatMaskerTable)) := NULL]
   repeatMaskerTable[, vcf_info := NULL]
-  annotatr::annotate_regions(regions = GenomicRanges::makeGRangesFromDataFrame(
-        repeatMaskerTable,
-        seqnames.field = "seqnames",
-        keep.extra.columns = T),
-                       annotations = annotation,
-                       ignore.strand = F,
-                       quiet = T
-      )
+  # annotatr::annotate_regions(regions = GenomicRanges::makeGRangesFromDataFrame(
+  #       repeatMaskerTable,
+  #       seqnames.field = "seqnames",
+  #       keep.extra.columns = T),
+  #                      annotations = annotation,
+  #                      ignore.strand = F,
+  #                      quiet = T
+  #     )
   # Now lets annotate
   annotatedInsertions = data.table(data.frame(
       annotatr::annotate_regions(regions = GenomicRanges::makeGRangesFromDataFrame(
@@ -205,8 +229,9 @@ if (T) {
   rm(text)
   print("Added class and subclass")
 
-  annotatedInsertions[, c("annot.strand", "annot.seqnames", "annot.width", "annot.id", "annot.tx_id") := NULL]
-  # We only save the ones that pass at least the min3 criteria for at least one occurrence
+  annotatedInsertions[, c("annot.strand", "annot.seqnames", "annot.width", "annot.id") := NULL]
+  # No saveRDS yet, because
+  # we only save the ones that pass at least the min3 criteria for at least one occurrence
 }
 
 rm(annotation);gc()
@@ -222,6 +247,10 @@ class1 = c("Retroposon", "SINE", "LINE", "LTR") # Families of class I elements
 class2 = c("DNA") # Class II elements
 
 annotatedInsertionsMin3 = annotatedInsertions[SUPP_min3 > 0]
+# if (F) {
+#   repeatMaskerTable[SUPP_min3 > 0] %>% nrow()
+#   annotatedInsertions[, .SD[1], by = seqId] %>% nrow()
+# }
 allIns = annotatedInsertions[ # An unfiltered version, with only one row per INS (so no annotation)
   , repeat.percentage := (repeat.end - repeat.start + 1) / SVLEN
 ][, .SD[1], by = seqId]
@@ -243,22 +272,10 @@ saveRDS(annotatedInsertionsMin3, snakemake@output[["annotatedInsertionsMin3"]])
 saveRDS(insertionsTable, snakemake@output[["insertionsTable"]])
 saveRDS(allIns, snakemake@output[["allIns"]])
 
-if (T) { # Calculate coverage on affected sites, on all patients, with Mosdepth, for genotyping
-  insertionsBed = insertionsTable[seqnames %in% chrs, c("seqnames", "start", "end", "seqId")]
-  insertionsBed[, `:=`(
-    start = pmax(start - 61, 0), # The extra 1 adjusts to BED coordinates
-    end = end + 60
-  )]
-
-  fwrite(insertionsBed, file = snakemake@output[["insertionsBed"]], sep = "\t", col.names = F, scipen=50)
-  saveRDS(insertionsBed, snakemake@output[["insertionsBedRds"]])
-}
-
 # 
 # Deletions
 # 
 meDeletionsMin3 = fread(snakemake@input[["repeatMaskerVcfDel"]], skip = "#CHROM")
-
 # This removes "LTR?" elements and similar ones
 meDeletionsMin3 = meDeletionsMin3[!INFO %like% "ME=[^;]*\\?[^;]*" & !INFO %like% "MEFAM=[^;]*\\?[^;]*"]
 meDeletionsMin3 = meDeletionsMin3[`#CHROM` %in% chrs]
@@ -277,7 +294,7 @@ meDeletionsMin3[ # Ids from survivor output are not guaranteed to be unique, and
 # all instances are min3, and if PSV != NaN, RE >= 3 -> min3 for that instance, since it existed
 # then, if PSV == "11" -> trusty, since min3 is already checked
 genoFields = meDeletionsMin3[1, 9] %>% unname() %>% stri_split_fixed(pattern = ":") %>% unlist()
-genoFieldsOfInt = c("PSV")
+genoFieldsOfInt = c("GT", "PSV")
 pos = which(genoFields %in% genoFieldsOfInt)
 for (col in colnames(meDeletionsMin3[1, .SD, .SDcols = patterns("^Sample")]) ) {
   meDeletionsMin3[, paste0(col, "_", genoFieldsOfInt) := tstrsplit(.SD[[col]], ":", fixed = T, keep = pos)]
@@ -287,6 +304,28 @@ meDeletionsMin3[, SUPP_min3 := stri_count_fixed(SUPP_VEC_min3, "1")]
 meDeletionsMin3[, SUPP_VEC_trusty := apply(.SD, 2, `==`, y = "11") %>% apply(., 2, as.integer) %>% apply(., 1, paste0, collapse = ""), .SDcols = patterns("_PSV$")]
 meDeletionsMin3[, SUPP_trusty := stri_count_fixed(SUPP_VEC_trusty, "1")]
 meDeletionsMin3[, SVLEN := as.numeric(gsub(".*SVLEN=([^;]+);.*", "\\1", INFO)) %>% abs()]
+# extract genotype for deletions
+for (col in colnames(meDeletionsMin3[1, .SD, .SDcols = patterns("_GT$")])) {
+  meDeletionsMin3[, (col) := get(col) %>% ifelse(. == "./.", "0/0", .) %>%
+                    lapply(function (x) {
+                      x %>%
+                        strsplit(split = "/", fixed = T) %>%
+                        unlist() %>%
+                        as.numeric() %>%
+                        sum()
+                    }) %>% unlist()]
+}
+meDeletionsMin3[
+  , genotype := .SD %>% 
+    simplify2array() %>% 
+    t() %>% 
+    split(., rep(1:ncol(.), each = nrow(.))) %>% 
+    unname(), 
+  .SDcols = grep(pattern = "_GT$", colnames(meDeletionsMin3))]
+meDeletionsMin3[, SUPP_VEC_geno := genotype %>% lapply(`>=`, y = 1)]
+meDeletionsMin3[, SUPP_geno := SUPP_VEC_geno %>% lapply(sum) %>% unlist()]
+meDeletionsMin3[, maf := genotype %>% lapply(function(x) sum(x) / (length(samples) * 2 ) ) %>% unlist() ] # humans are diploid, thus the length() * 2
+
 meDeletionsMin3[, grep("^(Sample|FORMAT)", colnames(meDeletionsMin3)) := NULL]
 meDeletionsMin3 = meDeletionsMin3[
   , .(
@@ -295,7 +334,13 @@ meDeletionsMin3 = meDeletionsMin3[
     end = sub(pattern = ".*;END=([^;]+).*", replacement = "\\1", x = INFO, perl = T) %>% as.numeric(),
     id = ID,
     SUPP_min3,
+    SUPP_VEC_min3,
     SUPP_trusty,
+    SUPP_VEC_trusty,
+    genotype,
+    maf,
+    SUPP_geno,
+    SUPP_VEC_geno,
     svlen,
     # info = INFO,
     name = sub(pattern = ".*ME=([^;]+).*", replacement = "\\1", x = INFO, perl = T),
@@ -337,8 +382,8 @@ meDeletionsMin3 = meDeletionsMin3[
 # rm(text); gc()
 # annotatedDeletionsMin3[, c("annot.strand", "annot.seqnames", "annot.width", "annot.id", "annot.tx_id") := NULL]
 
-deletionsBed = meDeletionsMin3[, c("seqnames", "start", "end", "id")]
-fwrite(deletionsBed, file = snakemake@output[["deletionsBed"]], sep = "\t", col.names = F, scipen=50)
-saveRDS(deletionsBed, snakemake@output[["deletionsBedRds"]])
+# deletionsBed = meDeletionsMin3[, c("seqnames", "start", "end", "id")]
+# fwrite(deletionsBed, file = snakemake@output[["deletionsBed"]], sep = "\t", col.names = F, scipen=50)
+# saveRDS(deletionsBed, snakemake@output[["deletionsBedRds"]])
 saveRDS(meDeletionsMin3, snakemake@output[["meDeletionsMin3"]])
 # saveRDS(annotatedDeletionsMin3, snakemake@output[["annotatedDeletionsMin3"]])

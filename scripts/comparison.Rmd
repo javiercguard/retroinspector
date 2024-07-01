@@ -120,7 +120,7 @@ __Note__: To ease readability, insertions present in one sample only (or not in 
 </div>
 
 ```{r}
-ins = readRDS(snakemake@input[["observedMafTable"]])
+ins = readRDS(snakemake@input[["insertionsTable"]])
 indexes = soi %>% lapply(function (x) {
   which(samples == x)
 }) %>% unlist()
