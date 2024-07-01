@@ -159,8 +159,8 @@ out.header.add_meta("FORMAT", items=[("ID", "DR"), ("Number", 2), ("Type", "Inte
     "Description", "#supporting reference,variant reads in that order")])
 out.header.add_meta("FORMAT", items=[(
     "ID", "ST"), ("Number", 1), ("Type", "String"), ("Description", "Strand of SVs")])
-out.header.add_meta("FORMAT", items=[("ID", "QV"), ("Number", 1), ("Type", "Integer"), (
-    "Description", "Quality values: if not defined a . otherwise the r")])
+out.header.add_meta("FORMAT", items=[("ID", "QV"), ("Number", 1), ("Type", "String"), (
+    "Description", "Quality values: if not defined a . otherwise the r")]) # string to keep compatibility with SURVIVOR's output
 out.header.add_meta("FORMAT", items=[
                     ("ID", "TY"), ("Number", 1), ("Type", "String"), ("Description", "Types")])
 out.header.add_meta("FORMAT", items=[(
@@ -204,7 +204,7 @@ emptyGenotype = {
     "LN": None,
     "DR": (None, None),
     "ST": ".",
-    "QV": 0,
+    "QV": ".",
     "TY": ".",
     "ID": ".",
     "RAL": ".",
@@ -264,7 +264,7 @@ for i in range(len(vcfs) - 1):
                 "LN": getInfoValue(var),
                 "DR": (None, readSupport),
                 "ST": "NAN",
-                "QV": qv,
+                "QV": str(qv),
                 "TY": "NaN",
                 "ID": var.id,
                 "RAL": var.ref,
@@ -377,7 +377,7 @@ for i in range(len(vcfs) - 1):
                 "ST":
                 "NAN",
                 "QV":
-                qv,
+                str(qv),
                 "TY":
                 "NaN",
                 "ID":
@@ -482,7 +482,7 @@ for var in vcfs[-1].fetch():  # Add the unmatched vars for the last one
         "LN": getInfoValue(var),
         "DR": (None, readSupport),
         "ST": "NAN",
-        "QV": qv,
+        "QV": str(qv),
         "TY": "NaN",
         "ID": var.id,
         "RAL": var.ref,
