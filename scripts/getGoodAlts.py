@@ -141,25 +141,11 @@ def processSv (line, parentTmp, bamFile):
                         bestIns = i
                         if difference == 0:
                             break
-                if bestIns == "" or idSV == "cuteSV.INS.45":
-                    print(idSV, len(bestIns), len(sequences))
-                    print(bestIns)
                 alt, method = assemble(seqList, 
                     individualTmp, 
                     idSV, bestIns, svLen)
-                if idSV == "cuteSV.INS.45":
-                    print(f"alt: {alt}, method: {method}")
-                if idSV == "cuteSV.INS.45":
-                    print("before setting sv.4")
-                    print(f"alt: {alt}")
-                    print(sv)
                 sv[4] = alt
-                if bestIns == "" or idSV == "cuteSV.INS.45":
-                    print("after setting sv.4")
-                    print(sv)
                 sv[7] = re.sub("(RNAMES|READS)=[^;]+", "", sv[7]) + "ALTMETHOD=" + method
-                if bestIns == "" or idSV == "cuteSV.INS.45":
-                    print(sv)
             except Exception as e:
                 traceback.print_exc()
                 print(e)
