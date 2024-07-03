@@ -12,6 +12,7 @@ insertionDistanceLimitIntraPatient: 20
 insertionDistanceLimitInterPatient: 20
 survivorInsertionDistanceLimitIntraPatient: 10
 survivorInsertionDistanceLimitInterPatient: 500
+callers: ["cuteSV", "SVIM"]
 
 # Keep certain files
 keepRds: True

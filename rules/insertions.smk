@@ -30,24 +30,18 @@ rule merge_insertions_intrapatient:
     "logs/merge_intrapatient/{sample}.log"
   input:
     script = str(workflow.basedir) + "/scripts/merge.py",
-    files = [
-      "variants/cutesv/{sample}.cutesv.polished.vcf.gz",
-      "variants/cutesv/{sample}.cutesv.polished.vcf.gz.csi",
-      "variants/svim/{sample}.svim.polished.vcf.gz",
-      "variants/svim/{sample}.svim.polished.vcf.gz.csi"
-      ],
+    vcfs = expand("variants/{infix}/{{sample}}.{infix}.polished.vcf.gz", infix = config["callerInfixes"]),
+    csis = expand("variants/{infix}/{{sample}}.{infix}.polished.vcf.gz.csi", infix = config["callerInfixes"]),
   output: 
     "tmp/{sample}.merged.both.ungenotyped.vcf", #! make temp
-    # "variants/{sample}.merged.both.vcf.gz",
-    # "variants/{sample}.merged.both.vcf.gz.csi"
   params:
     distanceLimit = config["insertionDistanceLimitIntraPatient"],
     script = str(workflow.basedir) + "/scripts/merge.py",
   shell:
     """
     python3 {input.script} \
-      -samples cuteSV SVIM \
-      -vcf {input.files[0]} {input.files[2]} \
+      -samples {config[callers]} \
+      -vcf {input.vcfs} \
       -o {output[0]} \
       -d {params.distanceLimit} # > {log} 2>&1
     """

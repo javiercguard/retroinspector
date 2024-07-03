@@ -15,6 +15,7 @@ if fastqDir:
 
 if config["referenceGenome"] == "":
     config["referenceGenome"] = str(workflow.basedir) + "/data/GCA_000001405.15_GRCh38_no_alt_analysis_set.fa"
+config["callerInfixes"] = [x.lower() for x in config["callers"]]
 
 print(file = sys.stderr)
 print(config["samples"], file = sys.stderr)

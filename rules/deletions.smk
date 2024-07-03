@@ -3,17 +3,10 @@ rule run_survivor_intrasample:
   log:
     "logs/survivor/{sample}.log"
   input:
-    vcfs = [
-      "variants/svim/{sample}.svim.vcf.gz",
-      "variants/cutesv/{sample}.cutesv.vcf.gz",
-      ],
-    indexes = [
-      "variants/svim/{sample}.svim.vcf.gz.csi",
-      "variants/cutesv/{sample}.cutesv.vcf.gz.csi",
-      ],
+    vcfs = expand("variants/{infix}/{{sample}}.{infix}.vcf.gz", infix = config["callerInfixes"])[::-1],
+    indexes = expand("variants/{infix}/{{sample}}.{infix}.vcf.gz.csi", infix = config["callerInfixes"]),
   output: 
     vcf = "tmp/{sample}.merged.survivor.ungenotyped.vcf", #! make temp
-    # index = "variants/survivor/{sample}.merged.survivor.vcf.gz.csi",
   params:
     distance = config["survivorInsertionDistanceLimitIntraPatient"],
   shell:
@@ -24,7 +17,6 @@ rule run_survivor_intrasample:
       -l 1 \
       -o {output.vcf} 2> {log}; \
     """
-    # bcftools index {output.vcf} 2>> {log}
 
 rule create_mosdepth_bed_del:
   conda: "../env.yaml"
