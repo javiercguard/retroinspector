@@ -118,7 +118,11 @@ rule process_sniffles2:
   input:
     rules.run_sniffles2.output[0]
   output:
-    "variants/sniffles2/{sample}.sniffles2.vcf"
+    "variants/sniffles2/{sample}.sniffles2.vcf.gz",
+    "variants/sniffles2/{sample}.sniffles2.vcf.gz.csi"
+  params:
+    support = config["minimumReadSupport"],
+    fixScript = str(workflow.basedir) + "/scripts/fixVCF.py",
   shell:
     """
     cat {input[0]} | \
