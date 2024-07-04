@@ -76,8 +76,8 @@ These are the options available, in __bold__ the ones more likely to need to be 
 | _`minimumReadSupport`_ | Minimum number of reads for variants to be called. | 3 |
 | `insertionDistanceLimitIntraPatient` | When merging insertions from the same sample, maximum distance of coordinates for a group of insertions to be considered the same on.e | 20 |
 | `insertionDistanceLimitInterPatient` | Same as above, but for merging from different samples. | 20 |
-| `survivorInsertionDistanceLimitIntraPatient` | Same as the previous ones, but for SURVIVOR. | 10 |
-| `survivorInsertionDistanceLimitInterPatient` | Same as the previous ones, but for SURVIVOR. | 500 |
+| `survivorInsertionDistanceLimitIntraPatient` | Same as above, but for SURVIVOR. | 10 |
+| `survivorInsertionDistanceLimitInterPatient` | Same as above, but for SURVIVOR. | 500 |
 | `keepRds` | Whether to keep R rds files, in case you want to load them latter. Use `True` or `False`, with the first letter capitalized. | `True` |
 | `samples` | List of samples and their FASTQ, see below for more details. Leave as is for autodetection. See `config.example.yaml` for syntax. | `{}` |
 | `comparisons` | List of samples to compare.  See `config.example.yaml` for syntax. | `[]` |
