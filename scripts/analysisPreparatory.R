@@ -171,8 +171,9 @@ if (T) {
       split(., rep(1:ncol(.), each = nrow(.))) %>% 
       unname(), 
     .SDcols = grep(pattern = "_GT$", colnames(repeatMaskerTable))]
-  repeatMaskerTable[, SUPP_VEC_geno := genotype %>% lapply(`>=`, y = 1)]
-  repeatMaskerTable[, SUPP_geno := SUPP_VEC_geno %>% lapply(sum) %>% unlist()] # Count SUPPORT with the min3 criteria
+  repeatMaskerTable[, SUPP_mask_geno := genotype %>% lapply(`>=`, y = 1)]
+  repeatMaskerTable[, SUPP_VEC_geno := SUPP_VEC_geno %>% lapply(as.numeric) %>% lapply(paste0, collapse = "") %>% unlist()]
+  repeatMaskerTable[, SUPP_geno := SUPP_mask_geno %>% lapply(sum) %>% unlist()]
   repeatMaskerTable[, maf := genotype %>% lapply(function(x) sum(x) / (length(samples) * 2 ) ) %>% unlist() ] # humans are diploid, thus the length() * 2
   # A vector column of supports from callers, for genotyping
   # supports = repeatMaskerTable[, .SD, .SDcols = grep("DR$", colnames(repeatMaskerTable))]
@@ -187,8 +188,6 @@ if (T) {
   repeatMaskerTable[, SUPP_mask_trusty := SUPP_VEC_trusty %>%
               lapply(strsplit, split = "") %>%
               lapply(function(x)as.logical(as.numeric(unlist(x))))]
-  repeatMaskerTable[, SUPP_mask_geno := SUPP_VEC_geno %>%
-                      lapply(as.logical)]
 
   repeatMaskerTable[, # split level2-level3 and replace NA for level 3 with "-"
     c("repeat.subclass", "repeat.family") := stri_match_all_regex(repeat.subclass, "([^-]+)(?:-([^-]+))?$") %>% rapply(., f = `[`, ... = 2:3, how = "r") %>%

@@ -20,10 +20,10 @@ rule analysis_preparatory:
     repeatMaskerVcfDel = f"variants/{config['allPrefix']}.me.deletions.vcf.gz",
   output:
     annotation = temp(f"tmp/rds/annotation.{config['allPrefix']}.rds"),
-    annotatedInsertionsMin3 = f"rds/annotatedInsertionsMin3.{config['allPrefix']}.rds",
-    insertionsTable = f"rds/insertionsTable.{config['allPrefix']}.rds",
+    annotatedInsertionsMin3 = conditionalTemp(f"rds/annotatedInsertionsMin3.{config['allPrefix']}.rds"),
+    insertionsTable = conditionalTemp(f"rds/insertionsTable.{config['allPrefix']}.rds"),
     allIns = conditionalTemp(f"rds/allIns.rds"),
-    meDeletionsMin3 = f"rds/meDeletionsMin3.unfiltered.{config['allPrefix']}.rds",
+    meDeletionsMin3 = conditionalTemp(f"rds/meDeletionsMin3.{config['allPrefix']}.rds"),
   params:
     samples = list(config["samples"].keys()),
   script:
@@ -39,8 +39,8 @@ rule analysis_genotyping:
   output:
     genes = temp(f"rds/genes.{config['allPrefix']}.rds"),
 
-    vcfBody = f"tmp/{config['allPrefix']}.me.insertions.txt", #! make temp
-    vcfBodyLax = f"tmp/{config['allPrefix']}.me.insertions.lax.txt", #! make temp
+    vcfBody = temp(f"tmp/{config['allPrefix']}.me.insertions.txt"),
+    vcfBodyLax = temp(f"tmp/{config['allPrefix']}.me.insertions.lax.txt"),
   threads: 16
   params:
     samples = list(config["samples"].keys()),
