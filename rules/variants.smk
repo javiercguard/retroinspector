@@ -104,7 +104,7 @@ rule run_sniffles2:
     bam = "alns/{sample}.bam",
     bai = "alns/{sample}.bam.bai"
   output:
-    "variants/sniffles2/{sample}.sniffles2.temp.vcf" #! temp
+    temp("variants/sniffles2/{sample}.sniffles2.temp.vcf")
   shell:
     """
     sniffles --threads {threads} --output-rnames \

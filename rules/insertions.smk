@@ -33,7 +33,7 @@ rule merge_insertions_intrapatient:
     vcfs = expand("variants/{infix}/{{sample}}.{infix}.polished.vcf.gz", infix = config["callerInfixes"]),
     csis = expand("variants/{infix}/{{sample}}.{infix}.polished.vcf.gz.csi", infix = config["callerInfixes"]),
   output: 
-    "tmp/{sample}.merged.both.ungenotyped.vcf", #! make temp
+    temp("tmp/{sample}.merged.both.ungenotyped.vcf"),
   params:
     distanceLimit = config["insertionDistanceLimitIntraPatient"],
     script = str(workflow.basedir) + "/scripts/merge.py",
@@ -54,7 +54,7 @@ rule create_mosdepth_bed_ins:
   input:
     vcf = "tmp/{sample}.merged.both.ungenotyped.vcf"
   output:
-    bed = "tmp/{sample}.ins.bed" #! make temp
+    bed = temp("tmp/{sample}.ins.bed")
   script: "../scripts/vcfToBedForMosdepth.py"
 
 rule mosdepth_for_genotyping_ins:
@@ -84,7 +84,7 @@ rule genotype:
     coverage = "mosdepth/{sample}.ins.regions.bed.gz",
     vcf = "tmp/{sample}.merged.both.ungenotyped.vcf",
   output: 
-    vcf = "variants/{sample}.merged.both.vcf", #! amke temp
+    vcf = temp("variants/{sample}.merged.both.vcf"),
   script: "../scripts/genotype.py"
 
 rule sort_index_vcf:

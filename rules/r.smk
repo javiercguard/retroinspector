@@ -19,15 +19,11 @@ rule analysis_preparatory:
     repeatMaskerBed = f"tmp/{config['allPrefix']}.merged.rm.bed",
     repeatMaskerVcfDel = f"variants/{config['allPrefix']}.me.deletions.vcf.gz",
   output:
-    annotation = f"tmp/rds/annotation.{config['allPrefix']}.rds", #! make temp
-    annotatedInsertionsMin3 = f"tmp/annotatedInsertionsMin3.unfiltered.{config['allPrefix']}.rds", #! make temp
-    insertionsTable = f"rds/insertionsTable.unfiltered.{config['allPrefix']}.rds", #! make temp
+    annotation = temp(f"tmp/rds/annotation.{config['allPrefix']}.rds"),
+    annotatedInsertionsMin3 = f"rds/annotatedInsertionsMin3.{config['allPrefix']}.rds",
+    insertionsTable = f"rds/insertionsTable.{config['allPrefix']}.rds",
     allIns = conditionalTemp(f"rds/allIns.rds"),
-    # insertionsBed = temp(f"tmp/insertionsBed.{config['allPrefix']}.bed"),
-    # insertionsBedRds = temp(f"insertionsBedRds.{config['allPrefix']}.rds"),
-    meDeletionsMin3 = f"tmp/rds/meDeletionsMin3.unfiltered.{config['allPrefix']}.rds", #! make temp
-    # deletionsBed = temp(f"tmp/deletionsBed.{config['allPrefix']}.bed"),
-    # deletionsBedRds = temp(f"rds/deletionsBedRds.{config['allPrefix']}.rds"),
+    meDeletionsMin3 = f"rds/meDeletionsMin3.unfiltered.{config['allPrefix']}.rds",
   params:
     samples = list(config["samples"].keys()),
   script:
@@ -38,24 +34,10 @@ rule analysis_genotyping:
   log:
     "logs/r_analysis_genotyping.log"
   input:
-    # insertionsBedRds = rules.analysis_preparatory.output.insertionsBedRds,
-    # deletionsBedRds = rules.analysis_preparatory.output.deletionsBedRds,
-    # insertionBedFiles = [f"mosdepth/{sample}.ins.regions.bed.gz" for sample in config["samples"]],
     insertionsTable = rules.analysis_preparatory.output.insertionsTable,
     annotatedInsertionsMin3 = rules.analysis_preparatory.output.annotatedInsertionsMin3,
-    # cppFile = str(workflow.basedir) + "/scripts/insSupport.cpp",
-    # repeatsReferenceTENoOverlap = "tmp/repeatsReferenceTENoOverlap.bed",
-    # mosdepthDelFiles = [f"mosdepth/{sample}.del.regions.bed.gz" for sample in config["samples"]],
-    # repeatMaskerVcfDel = f"variants/{config['allPrefix']}.me.deletions.vcf.gz",
-    # meDeletionsMin3 = rules.analysis_preparatory.output.meDeletionsMin3,
-    # vcfs = [f"variants/survivor/{sample}.merged.survivor.vcf.gz" for sample in config["samples"]],
   output:
-    # insertionsTable = conditionalTemp(f"rds/insertionsTable.{config['allPrefix']}.rds"),
-    # annotatedInsertionsMin3 = conditionalTemp(f"rds/annotatedInsertionsMin3.{config['allPrefix']}.rds"),
-    # meDeletionsMin3 = conditionalTemp(f"rds/meDeletionsMin3.{config['allPrefix']}.rds"),
-    # observedMafTable = conditionalTemp(f"rds/observedMafTable.{config['allPrefix']}.rds"),
     genes = temp(f"rds/genes.{config['allPrefix']}.rds"),
-    # genotypedDeletions = conditionalTemp(f"rds/genotypedDeletions.{config['allPrefix']}.rds"),
 
     vcfBody = f"tmp/{config['allPrefix']}.me.insertions.txt", #! make temp
     vcfBodyLax = f"tmp/{config['allPrefix']}.me.insertions.lax.txt", #! make temp

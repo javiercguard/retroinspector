@@ -6,7 +6,7 @@ rule run_survivor_intrasample:
     vcfs = expand("variants/{infix}/{{sample}}.{infix}.vcf.gz", infix = config["callerInfixes"])[::-1],
     indexes = expand("variants/{infix}/{{sample}}.{infix}.vcf.gz.csi", infix = config["callerInfixes"]),
   output: 
-    vcf = "tmp/{sample}.merged.survivor.ungenotyped.vcf", #! make temp
+    vcf = temp("tmp/{sample}.merged.survivor.ungenotyped.vcf"),
   params:
     distance = config["survivorInsertionDistanceLimitIntraPatient"],
   shell:
@@ -25,7 +25,7 @@ rule create_mosdepth_bed_del:
   input:
     vcf = "tmp/{sample}.merged.survivor.ungenotyped.vcf",
   output:
-    bed = "tmp/{sample}.del.bed", #! make temp
+    bed = temp("tmp/{sample}.del.bed"),
   params:
     svType = "DEL",
   script: "../scripts/vcfToBedForMosdepth.py"
@@ -57,7 +57,7 @@ rule genotype_del:
     coverage = "mosdepth/{sample}.del.regions.bed.gz",
     vcf = "tmp/{sample}.merged.survivor.ungenotyped.vcf",
   output: 
-    vcf = "variants/survivor/{sample}.merged.survivor.vcf", #! make temp
+    vcf = temp("variants/survivor/{sample}.merged.survivor.vcf"),
   params:
     svType = "DEL"
   script: "../scripts/genotype.py"
