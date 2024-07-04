@@ -1,4 +1,4 @@
-#! /usr/env/python2
+#! /usr/bin/env python3
 
 from pysam import VariantFile
 
