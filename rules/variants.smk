@@ -95,7 +95,7 @@ rule process_sniffles:
     """
 
 rule run_sniffles2:
-  conda: "../env.yaml" # Sniffles2 woud require its own environment or displace sniffles
+  conda: "../env_sniffles2.yaml" # Sniffles2 woud require its own environment or displace sniffles
   log:
     "logs/sniffles2/{sample}.log"
   threads: config['threads']
@@ -104,11 +104,11 @@ rule run_sniffles2:
     bam = "alns/{sample}.bam",
     bai = "alns/{sample}.bam.bai"
   output:
-    temp("variants/sniffles2/{sample}.sniffles2.temp.vcf")
+    "variants/sniffles2/{sample}.sniffles2.temp.vcf" #! temp
   shell:
     """
-    sniffles -t {threads} \
-    --input {input.bam} --output {output} 2> {log}
+    sniffles --threads {threads} --output-rnames \
+    --input {input.bam} --vcf {output} &> {log}
     """
 
 rule process_sniffles2:
@@ -134,7 +134,7 @@ rule process_sniffles2:
         $5="<"a[1]">";$4="N";print}} \
       }} \
     }}' | \
-    gawk -v 'OFS=\\t' '{{if (substr($0, 1, 1) == "#") {{print}} else {{ match($8, /RE=([0-9]+)/, a); if (a[1] >= {params.support}) {{print}} }} }}' | \
+    gawk -v 'OFS=\\t' '{{if (substr($0, 1, 1) == "#") {{print}} else {{ match($8, /SUPPORT=([0-9]+)/, a); if (a[1]+0 >= {params.support}) {{print}} }} }}' | \
     python {params.fixScript} | \
     bcftools sort -O z -o {output[0]}; \
     bcftools index {output[0]}
