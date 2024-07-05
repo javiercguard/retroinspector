@@ -172,7 +172,7 @@ if (T) {
       unname(), 
     .SDcols = grep(pattern = "_GT$", colnames(repeatMaskerTable))]
   repeatMaskerTable[, SUPP_mask_geno := genotype %>% lapply(`>=`, y = 1)]
-  repeatMaskerTable[, SUPP_VEC_geno := SUPP_VEC_geno %>% lapply(as.numeric) %>% lapply(paste0, collapse = "") %>% unlist()]
+  repeatMaskerTable[, SUPP_VEC_geno := SUPP_mask_geno %>% lapply(as.numeric) %>% lapply(paste0, collapse = "") %>% unlist()]
   repeatMaskerTable[, SUPP_geno := SUPP_mask_geno %>% lapply(sum) %>% unlist()]
   repeatMaskerTable[, maf := genotype %>% lapply(function(x) sum(x) / (length(samples) * 2 ) ) %>% unlist() ] # humans are diploid, thus the length() * 2
   # A vector column of supports from callers, for genotyping
@@ -295,7 +295,7 @@ meDeletionsMin3[ # Ids from survivor output are not guaranteed to be unique, and
 genoFields = meDeletionsMin3[1, 9] %>% unname() %>% stri_split_fixed(pattern = ":") %>% unlist()
 genoFieldsOfInt = c("GT", "PSV")
 pos = which(genoFields %in% genoFieldsOfInt)
-for (col in colnames(meDeletionsMin3[1, .SD, .SDcols = patterns("^Sample")]) ) {
+for (col in colnames(meDeletionsMin3[1, .SD, .SDcols = patterns("^SAMPLE")]) ) {
   meDeletionsMin3[, paste0(col, "_", genoFieldsOfInt) := tstrsplit(.SD[[col]], ":", fixed = T, keep = pos)]
 }
 meDeletionsMin3[, SUPP_VEC_min3 := apply(.SD, 2, `!=`, y = "NaN") %>% apply(., 2, as.integer) %>% apply(., 1, paste0, collapse = ""), .SDcols = grep(pattern = "_PSV$", colnames(meDeletionsMin3))]
