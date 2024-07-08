@@ -7,7 +7,7 @@ rule run_svim:
     bam = "alns/{sample}.bam",
     bai = "alns/{sample}.bam.bai"
   output:
-    temp(directory("tmp/svim/{sample}")),
+    directory("tmp/svim/{sample}"),
   shell:
     """
     svim alignment --sequence_alleles --read_names \
@@ -38,6 +38,7 @@ rule process_svim:
       }} \
     }}' | \
     gawk -v 'OFS=\\t' '{{if (substr($0, 1, 1) == "#") {{print}} else {{ match($8, /SUPPORT=([0-9]+)/, a); if (a[1] >= {params.support}) {{print}} }} }}' | \
+    gawk -v 'OFS=\\t' '{{if (substr($0, 1, 1) == "#") {{sub(/SUPPORT,/, "RE,", $0); print}} else {{ sub(/SUPPORT=/, "RE=", $8); print }} }}' | \
     python {params.fixScript} | \
     bcftools sort -O z -o {output[0]}; \
     bcftools index {output[0]}
@@ -104,7 +105,7 @@ rule run_sniffles2:
     bam = "alns/{sample}.bam",
     bai = "alns/{sample}.bam.bai"
   output:
-    temp("variants/sniffles2/{sample}.sniffles2.temp.vcf")
+    "variants/sniffles2/{sample}.sniffles2.temp.vcf"
   shell:
     """
     sniffles --threads {threads} --output-rnames \
@@ -135,6 +136,7 @@ rule process_sniffles2:
       }} \
     }}' | \
     gawk -v 'OFS=\\t' '{{if (substr($0, 1, 1) == "#") {{print}} else {{ match($8, /SUPPORT=([0-9]+)/, a); if (a[1]+0 >= {params.support}) {{print}} }} }}' | \
+    gawk -v 'OFS=\\t' '{{if (substr($0, 1, 1) == "#") {{sub(/SUPPORT,/, "RE,", $0); print}} else {{ sub(/SUPPORT=/, "RE=", $8); print }} }}' | \
     python {params.fixScript} | \
     bcftools sort -O z -o {output[0]}; \
     bcftools index {output[0]}
