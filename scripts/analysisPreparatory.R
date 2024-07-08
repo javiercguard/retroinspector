@@ -9,12 +9,12 @@ library(qqman) %>% suppressMessages()
 
 # Patients and folders
 # ----
-selectedPatients = snakemake@params[["samples"]]
+samples = snakemake@params[["samples"]]
 # ----
 
 if (F) {
   # For debugging
-  saveRDS(snakemake, "~/path/snk2.rds")
+  saveRDS(snakemake, paste0(snakemake@config[["outputPath"]], "/snk.rds"))
   q()
   snakemake = readRDS("~/path/snk2.rds")
   setwd("~/path/")
@@ -66,12 +66,11 @@ if (T) {
   #     vcf_alt = "character",
   #     vcf_info = "character",
   #     setNames(
-  #       rep("character", times = length(selectedPatients)),
-  #       paste0("id", selectedPatients)
+  #       rep("character", times = length(samples)),
+  #       paste0("id", samples)
   #       )
   #   )
   # ) %>% as.data.table()
-  print(selectedPatients)
   repeatMaskerTable = fread(
     snakemake@input[["repeatMaskerBed"]],
     col.names = c(
@@ -89,7 +88,7 @@ if (T) {
     "repeat.insertion_percentage",
     "vcf_alt",
     "vcf_info",
-    paste0("id", selectedPatients)
+    paste0("id", samples)
     )
   )
   print("Annotated")
@@ -98,9 +97,12 @@ if (T) {
   genoFieldsOfInt = c("GT", "PSV", "DR") # Used for counting occurrence and genotyping
   pos = which(genoFields %in% genoFieldsOfInt) # The position of "PSV" and "DR" in the genotype columns
 
-  for (col in colnames(repeatMaskerTable[1, .SD, .SDcols = patterns(
-    paste0("^(" , paste0(paste0("id", selectedPatients %>% stri_replace_all_fixed(., pattern = "-", replacement = ".")), collapse = "|"), ")$")
-    )]) ) {
+  for (col in repeatMaskerTable %>% colnames() %>%
+       .[. %in% paste0("id",
+                       samples %>% stri_replace_all_fixed(., pattern = "-", replacement = "."))]
+       
+  ) {
+    
     # create columns for GT, PSV and DR for each patient
     repeatMaskerTable[, paste0(col, "_", genoFieldsOfInt) := tstrsplit(.SD[[col]], ":", fixed = T, keep = pos)]
     # keep second value of DR, which is the one supporting the INS
@@ -154,7 +156,8 @@ if (T) {
 
   # We extract the genotype from the columns and store it as numeric
   # 0 is hom. ref., 1 is het., 2 is hom. alt.
-  for (col in colnames(repeatMaskerTable[1, .SD, .SDcols = patterns("_GT$")])) {
+  for (col in repeatMaskerTable %>% colnames() %>% 
+       grep(pattern = "_GT$", x = ., value = T)) {
     repeatMaskerTable[, (col) := get(col) %>%
                                    lapply(function (x) {
                                      x %>%
@@ -295,7 +298,8 @@ meDeletionsMin3[ # Ids from survivor output are not guaranteed to be unique, and
 genoFields = meDeletionsMin3[1, 9] %>% unname() %>% stri_split_fixed(pattern = ":") %>% unlist()
 genoFieldsOfInt = c("GT", "PSV")
 pos = which(genoFields %in% genoFieldsOfInt)
-for (col in colnames(meDeletionsMin3[1, .SD, .SDcols = patterns("^SAMPLE")]) ) {
+for (col in meDeletionsMin3 %>% colnames() %>% 
+     grep(pattern = "^Sample", x = ., ignore.case = T, value = T) ) {
   meDeletionsMin3[, paste0(col, "_", genoFieldsOfInt) := tstrsplit(.SD[[col]], ":", fixed = T, keep = pos)]
 }
 meDeletionsMin3[, SUPP_VEC_min3 := apply(.SD, 2, `!=`, y = "NaN") %>% apply(., 2, as.integer) %>% apply(., 1, paste0, collapse = ""), .SDcols = grep(pattern = "_PSV$", colnames(meDeletionsMin3))]
@@ -304,7 +308,8 @@ meDeletionsMin3[, SUPP_VEC_trusty := apply(.SD, 2, `==`, y = "11") %>% apply(., 
 meDeletionsMin3[, SUPP_trusty := stri_count_fixed(SUPP_VEC_trusty, "1")]
 meDeletionsMin3[, SVLEN := as.numeric(gsub(".*SVLEN=([^;]+);.*", "\\1", INFO)) %>% abs()]
 # extract genotype for deletions
-for (col in colnames(meDeletionsMin3[1, .SD, .SDcols = patterns("_GT$")])) {
+for (col in meDeletionsMin3 %>% colnames() %>% 
+     grep(pattern = "_GT$", x = ., value = T)) {
   meDeletionsMin3[, (col) := get(col) %>% ifelse(. == "./.", "0/0", .) %>%
                     lapply(function (x) {
                       x %>%
@@ -323,9 +328,9 @@ meDeletionsMin3[
   .SDcols = grep(pattern = "_GT$", colnames(meDeletionsMin3))]
 meDeletionsMin3[, SUPP_VEC_geno := genotype %>% lapply(`>=`, y = 1)]
 meDeletionsMin3[, SUPP_geno := SUPP_VEC_geno %>% lapply(sum) %>% unlist()]
-meDeletionsMin3[, maf := genotype %>% lapply(function(x) sum(x) / (length(samples) * 2 ) ) %>% unlist() ] # humans are diploid, thus the length() * 2
+meDeletionsMin3[, maf := genotype %>% lapply(function(x) sum(x) / (length(samples) * 2) ) %>% unlist() ] # humans are diploid, thus the length() * 2
 
-meDeletionsMin3[, grep("^(Sample|FORMAT)", colnames(meDeletionsMin3)) := NULL]
+meDeletionsMin3[, grep("^(Sample|FORMAT)", colnames(meDeletionsMin3), ignore.case = T) := NULL]
 meDeletionsMin3 = meDeletionsMin3[
   , .(
     seqnames = `#CHROM`,

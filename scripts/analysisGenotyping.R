@@ -11,7 +11,7 @@ print("Loaded libraries")
 
 if (F) {
   # For debugging
-  saveRDS(snakemake, "~/path/snk2.rds")
+  saveRDS(snakemake, paste0(snakemake@config[["outputPath"]], "/snk2.rds"))
   q()
   snakemake = readRDS("~/path/snk2.rds")
 }
