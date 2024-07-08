@@ -83,6 +83,7 @@ library(stringi)
 library(ggplot2)
 library(patchwork)
 library(qqman)
+library(enrichplot)
 ```
 
 ```{r cutomFacetWrapDefinition}
@@ -161,7 +162,7 @@ chrScales = lapply(1:length(chrsLength),
 
 ```{r data}
 if (F) {
-  saveRDS(snakemake, "~/path/snk3.rds")
+  saveRDS(snakemake, paste0(snakemake@config[["outputPath"]], "/snk3.rds"))
   q()
   setwd("~/path")
   snakemake = readRDS("~/path/snk3.rds")
@@ -777,7 +778,6 @@ goCaptions = c(
 )
 ```
 
-
 ```{r go,results="asis", fig.align="center", fig.cap = goCaptions}
 fullNames = list(MF = "Molecular Function", BP = "Biological Process",
                  CC = "Cellular Component")
@@ -792,7 +792,6 @@ for (x in c("MF", "BP", "CC")) {
     cat("No significant results were found for this group.\n\n")
     next()
   }
-  knitr::opts_chunk
   object@result %>% data.table() %>%
     .[, `:=`(
       "geneID" = NULL,
@@ -810,7 +809,7 @@ for (x in c("MF", "BP", "CC")) {
   cat("\n\nThe category with lowest p value is *", dt[order(p.adjust)][1, Description],
       "* (", dt[order(p.adjust)][1, p.adjust],
       ")", sep = "")
-  if (nrow(dt > 1)) 
+  if (nrow(dt > 1))
     cat(", and the highest (among the lowest ", topN,") is *",
       dt[order(p.adjust)][topN, Description] %>% as.character(), "* (",
       dt[order(p.adjust)][topN, p.adjust],")", ". The ratio is ",
@@ -821,15 +820,15 @@ for (x in c("MF", "BP", "CC")) {
       " orders of magnitude.\n\n",
       sep = '')
   else cat('.\n\n')
-  
+
   n = min(100, nrow(dt))
   message = if (n == 100) " for categories with the lowest p value" else " for significant categories"
   cat(paste0("<details><summary>Click to show/hide table with ", n, " rows", message, ".</summary>\n\n"))
-  dt[order(p.adjust)][1:n] %>% 
-    .[, lapply(.SD, function (x) if (is.numeric(x)) {sprintf("%.4g", x)} else x)] %>% 
-  flextable::flextable() %>% 
+  dt[order(p.adjust)][1:n] %>%
+    .[, lapply(.SD, function (x) if (is.numeric(x)) {sprintf("%.4g", x)} else x)] %>%
+  flextable::flextable() %>%
   flextable::autofit() %>%
-  flextable::theme_booktabs() %>% 
+  flextable::theme_booktabs() %>%
   flextable::align_nottext_col(align = "center") %>%
   flextable::flextable_to_rmd() %>% print()
   cat("</details>\n\n")
@@ -908,4 +907,3 @@ if (is.null(ncg)) {
 
 ```{r eval=as.logical(length(snakemake@input[["otherSets"]])),child=paste0(snakemake@scriptdir, "/sets.Rmd")}
 ```
-
