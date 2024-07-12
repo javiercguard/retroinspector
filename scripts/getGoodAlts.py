@@ -89,7 +89,7 @@ def processSv (line, parentTmp, bamFile):
                             insIndex = i
                             bestDiff = difference
                             bestOp = (opCode, opLength)
-                    if bestOp[0] not in range(floor(svLen * 0.85), ceil(svLen * 1.15)):
+                    if bestOp[1] not in range(floor(svLen * 0.85), ceil(svLen * 1.15)):
                         continue
                     startInRead = 0
                     referenceShift = 0
