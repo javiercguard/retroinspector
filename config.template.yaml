@@ -11,7 +11,7 @@ insertionDistanceLimitIntraPatient: 20
 insertionDistanceLimitInterPatient: 20
 survivorInsertionDistanceLimitIntraPatient: 10
 survivorInsertionDistanceLimitInterPatient: 500
-callers: ["cuteSV", "SVIM"] # choose 2 from "cuteSV", "SVIM", "sniffles", "sniffles2"
+callers: ["cuteSV", "sniffles2"] # choose 2 from "cuteSV", "SVIM", "sniffles", "sniffles2"
 # and it's case-sensitive
 
 # Keep certain files
