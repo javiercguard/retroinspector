@@ -1,7 +1,7 @@
 configfile: "config.default.yaml"
 
 import os, sys
-from pprint import pprint
+from pprint import pformat
 
 fastqDir = ''
 if os.path.exists(config["outputPath"]+"/fastq"):
@@ -18,7 +18,7 @@ if config["referenceGenome"] == "":
 config["callerInfixes"] = [x.lower() for x in config["callers"]]
 
 print(file = sys.stderr)
-print(config["samples"], file = sys.stderr)
+print(pformat(config["samples"], sort_dicts = False), file = sys.stderr)
 print(file = sys.stderr)
 
 include: "rules/alignment.smk"
