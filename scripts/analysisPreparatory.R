@@ -88,7 +88,7 @@ if (T) {
     "repeat.insertion_percentage",
     "vcf_alt",
     "vcf_info",
-    paste0("id", samples)
+    paste0("id", samples %>% stri_replace_all_fixed(., pattern = "-", replacement = "."))
     )
   )
   print("Annotated")
