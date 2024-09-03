@@ -43,7 +43,7 @@ rule merge_insertions_intrapatient:
       -samples {config[callers]} \
       -vcf {input.vcfs} \
       -o {output[0]} \
-      -d {params.distanceLimit} # > {log} 2>&1
+      -d {params.distanceLimit} > {log} 2>&1
     """
     # bcftools sort {output[0]} -O z -o {output[1]} 2>> {log};
     # bcftools index {output[1]} 2>> {log}
@@ -139,6 +139,7 @@ rule repeatmasker:
     file = f"variants/{config['allPrefix']}.merged.vcf.gz",
     index = f"variants/{config['allPrefix']}.merged.vcf.gz.csi"
   params:
+    script = str(workflow.basedir) + "/scripts/checkInsertionsMultiSample.py",
     direct = "repeatmasker",
     species = config["species"],
     threads = config['threads']

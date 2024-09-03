@@ -1,6 +1,7 @@
 #! /usr/env python3
 from statistics import median
-from math import floor
+from math import floor, ceil
+from pprint import pp
 from pysam import VariantFile
 from collections import namedtuple
 from fuzzywuzzy import fuzz as fz
@@ -214,6 +215,7 @@ emptyGenotype = {
 }
 genotypeFields = "GT:PSV:LN:DR:ST:QV:TY:ID:RAL:AAL:CO:SC".split(":")
 
+# poscheck = 21871943
 n = 0
 for i in range(len(vcfs) - 1):
 
@@ -229,6 +231,8 @@ for i in range(len(vcfs) - 1):
     for var in vcf.fetch():
 
         uid = f"{sample}_{var.id}"
+        # if poscheck-10 <= var.pos <= poscheck+10:
+        #         print(var.chrom, var.pos)
 
         if var.info["SVTYPE"] != "INS":
             continue
@@ -295,7 +299,7 @@ for i in range(len(vcfs) - 1):
         }
 
         svLen = getInfoValue(var)
-        svLenToCompare = svLen * 0.15
+        svLenToCompare = ceil(svLen * 0.15)
         svScoreToCompare = 60
 
         for j in range(len(vcfs)):
@@ -317,9 +321,12 @@ for i in range(len(vcfs) - 1):
                 filter(
                     lambda x:
                         x.info["SVTYPE"] == var.info["SVTYPE"] and
-                    abs(svLen - getInfoValue(x, toInt=1)) < svLenToCompare,
+                    abs(svLen - getInfoValue(x, toInt=1)) <= svLenToCompare,
                     candidates)
             )
+            # if var.pos == poscheck:
+            #     print(var.chrom, var.pos)
+            #     print(f"# Initial candidates: {len(candidates)}")
             if not candidates:
                 result["samples"][sampleToCompare] = emptyGenotype
                 continue  # To next VCF
@@ -340,13 +347,19 @@ for i in range(len(vcfs) - 1):
                 } for x in candidates]
                 chosen = max(alns, key=lambda x: x["aln"].score)
                 cand = chosen["candidate"]
+                # if var.pos == poscheck:
+                #     print("chosen")
+                #     print(chosen)
+                # print(chosen['aln'].score)
                 if chosen["aln"].score < svScoreToCompare:
                     result["samples"][sampleToCompare] = emptyGenotype
                     continue  # To next VCF
             else:
                 cand = candidates[0]
                 chosen = {"cand": cand, "aln": 0}
-
+            # if var.pos == poscheck:
+            #         print("we have chosen")
+            #         pp(chosen)
             uid2 = sampleToCompare + "_" + cand.id
             consumed.add(uid2)
             result["info"]["SUPP"] += 1
@@ -421,6 +434,8 @@ for i in range(len(vcfs) - 1):
             filter="PASS",
             id=str(n),
         )
+        # if var.pos == 172571922:
+        #     pp(result)
         n += 1
         for field, value in result["info"].items():
             try:
