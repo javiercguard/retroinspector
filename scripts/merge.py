@@ -275,7 +275,7 @@ for i in range(len(vcfs) - 1):
                 "AAL": altField,
                 "CO": f"{var.chrom}_{var.pos}_{var.stop}",
                 "SC": 100,
-                'start': var.pos,
+                'start': var.start,
                 'end': var.stop,
             }
         except Exception as e:
@@ -405,7 +405,7 @@ for i in range(len(vcfs) - 1):
                 chosen["aln"].score
                 if isinstance(chosen["aln"], tuple) else chosen["aln"],
                 'start':
-                cand.pos,
+                cand.start,
                 'end':
                 cand.stop,
             }
@@ -428,7 +428,7 @@ for i in range(len(vcfs) - 1):
         result["info"]["SVLEN"] = lenToUse
         record = out.new_record(
             contig=var.chrom,
-            start=startToUse - 1,
+            start=startToUse,
             stop=endToUse,
             alleles=(var.ref, var.alts[0]),
             filter="PASS",
@@ -521,7 +521,7 @@ for var in vcfs[-1].fetch():  # Add the unmatched vars for the last one
         sampleToCompare = sampleList[j]
         result["samples"][sampleToCompare] = emptyGenotype
     try:
-        record = out.new_record(contig=var.chrom, start=var.start - 1, stop=var.stop,
+        record = out.new_record(contig=var.chrom, start=var.start, stop=var.stop,
                                 alleles=(var.ref, var.alts[0]), filter="PASS",
                                 id=str(n),
                                 )
