@@ -7,6 +7,7 @@ outputPath: "/path/to/output/dir" # Dont't include the trailing "/"
 allPrefix: "template"
 
 # Parameters
+mode: "full"
 minimumReadSupport: 3
 insertionDistanceLimitIntraPatient: 20
 insertionDistanceLimitInterPatient: 20
