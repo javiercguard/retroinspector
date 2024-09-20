@@ -1,18 +1,22 @@
 # Genome
 referenceGenome: ""
+species: "homo_sapiens"
 
 # Paths
 # dataPath: "" 
-outputPath: "/path/to/output/dir" # Dont't include the trailing "/"
+outputPath: "./" # Dont't include the trailing "/"
 allPrefix: "template"
 
 # Parameters
+threads: 32
 minimumReadSupport: 3
 insertionDistanceLimitIntraPatient: 20
 insertionDistanceLimitInterPatient: 20
 survivorInsertionDistanceLimitIntraPatient: 10
 survivorInsertionDistanceLimitInterPatient: 500
+enrichmentSignificanceThreshold: 0.05
 callers: ["cuteSV", "sniffles2"]
+datasets: []
 
 # Keep certain files
 keepRds: True
