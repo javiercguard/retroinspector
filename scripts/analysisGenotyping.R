@@ -134,7 +134,9 @@ ioi2 = roi[, .SD[1], by = seqId][,
            .(seqId, seqnames, start, end, 
            name, repeat.class, repeat.subclass,
            SVLEN,
-           SUPP_min3, SUPP_trusty)]
+           SUPP_min3, SUPP_trusty, 
+           alleles = genotype %>% lapply(sum) %>% unlist()
+           )]
 setkey(ioi2, seqnames, start, end)
 
 # This is a very inefficient step
@@ -321,15 +323,19 @@ vcf = vcf[SUPP_geno > 0, .(
     paste0("SUPP_lax=", SUPP_min3),
     paste0("SUPP_geno=", SUPP_geno),
     paste0("MAF=", maf),
+    paste0("SAMPLE_N=", length(samples)),
+    paste0("ALLELE_N=", alleles),
     sep = ";")
-)]
+    )]
 fwrite(vcf, snakemake@output[["vcfBody"]], sep = "\t") # Created
 
 ioi3 = annotatedInsertionsMin3[repeat.class %in% c("Retroposon", "SINE", "LINE", "DNA", "LTR") & repeat.percentage >= 0.85][, .SD[1], by = seqId][,
            .(seqId, seqnames, start, end, 
            name, repeat.class, repeat.subclass,
            SVLEN,
-           SUPP_min3, SUPP_trusty)]
+           SUPP_min3, SUPP_trusty, 
+           alleles = genotype %>% lapply(sum) %>% unlist()
+           )]
 setkey(ioi3, seqnames, start, end)
 vcf2 = ioi3[insertionsTable[, c("seqId", "SUPP_geno", "maf", "vcf_alt")], on = "seqId", nomatch = NULL]
 vcf2 = vcf2[SUPP_geno > 0, .(
@@ -351,6 +357,8 @@ vcf2 = vcf2[SUPP_geno > 0, .(
     paste0("SUPP_lax=", SUPP_min3),
     paste0("SUPP_geno=", SUPP_geno),
     paste0("MAF=", maf),
+    paste0("SAMPLE_N=", length(samples)),
+    paste0("ALLELE_N=", alleles),
     sep = ";")
 )]
 fwrite(vcf2, snakemake@output[["vcfBodyLax"]], sep = "\t") # Created

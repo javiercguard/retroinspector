@@ -207,4 +207,6 @@
 ##INFO=<ID=TE_FAMILY,Number=1,Type=String,Description="Family of  the TE, like SINE">
 ##INFO=<ID=TE_SUBFAMILY,Number=1,Type=String,Description="Subamily of  the TE, like Alu">
 ##INFO=<ID=TE_NAME,Number=1,Type=String,Description="Name of  the TE, like AluY">
+##INFO=<ID=SAMPLE_N,Number=1,Type=Integer,Description="Number of samples in the dataset for this file">
+##INFO=<ID=ALLELE_N,Number=1,Type=Integer,Description="Number of alleles in the dataset for this file">
 ##ALT=<ID=INS,Description="Insertion">
