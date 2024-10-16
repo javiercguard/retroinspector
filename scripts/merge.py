@@ -7,7 +7,7 @@ from collections import namedtuple
 from fuzzywuzzy import fuzz as fz
 import sys
 import argparse
-import traceback
+import re, traceback
 
 signature = "merge.py"
 
@@ -55,6 +55,9 @@ def replaceChar(str, what, idx):
     """
     Puts what at index idx of string str. str, int, str -> str
     """
+    if idx >= len(str):
+        raise Exception("Error when substiting out of bound:\n"
+        f"Attempting to set position {idx} on string {str}")
     return str[0:idx] + what + str[idx + 1:]
 
 
@@ -190,8 +193,10 @@ for i in range(len(sampleList)):
     for i in vcf:
         exampleRecord = i
         break  # We take the first one as an example
-    if f"##METHOD={signature}" in str(vcf.header):
-        sampleParams[sample]["method"] = signature
+    # if f"##METHOD={signature}" in str(vcf.header):
+    #     sampleParams[sample]["method"] = signature
+    if method := re.findall(r"##(?:METHOD|source)=(.+)", str(vcf.header), re.MULTILINE):
+        sampleParams[sample]["method"] = method[0]
     if "RE" in exampleRecord.info.keys():
         sampleParams[sample]["supportKey"] = "RE"
     if "PE" in exampleRecord.info.keys():
@@ -221,7 +226,7 @@ for i in range(len(vcfs) - 1):
 
     vcf = vcfs[i]
     sample = sampleList[i]
-    others = vcfs[i + 1:]
+    # others = vcfs[i + 1:]
 
     # print(sample)
     sampleN = len(list(vcf.header.samples))
@@ -302,11 +307,14 @@ for i in range(len(vcfs) - 1):
         svLenToCompare = ceil(svLen * 0.15)
         svScoreToCompare = 60
 
-        for j in range(len(vcfs)):
+        for sampleToCompare in sampleList[0:i]: # set previous samples to empty column
+            # if there was a match it would have been merged when processing that sample
+            # and this variant would have been ommitted due to being in consumed
+            result["samples"][sampleToCompare] = emptyGenotype
+
+        for _j, other in enumerate(vcfs[i+1:]):
+            j = i + _j + 1
             sampleToCompare = sampleList[j]
-            if j == i:  # no intra-VCF merging
-                continue
-            other = vcfs[j]
             candidates = []  # candidates are reset for every VCF
             for candidate in other.fetch(var.chrom, max(var.pos - distance, 0),
                                          var.pos + distance):
@@ -366,7 +374,7 @@ for i in range(len(vcfs) - 1):
             result["info"]["SUPP_VEC"] = replaceChar(
                 result["info"]["SUPP_VEC"], "1", j)
             readSupport = 0
-            if sampleParams[sampleToCompare]["method"] == signature:
+            if sampleParams[sampleToCompare]["method"] == signature or sampleParams[sampleToCompare]["method"].startswith("SURVIVOR"):
                 readSupport = max([
                     int(x) if isNumber(x) else -1
                     for x in [geno["DR"][1] for geno in cand.samples.values()]
@@ -374,6 +382,10 @@ for i in range(len(vcfs) - 1):
             elif sampleParams[sampleToCompare]["supportKey"]:
                 readSupport = cand.info[sampleParams[sampleToCompare]
                                         ["supportKey"]]
+                try:
+                    readSupport = cand.info[sampleParams[sampleToCompare]["supportKey"]]
+                except:
+                    sys.exit(f"Error when accessing read evidence number for var\n{cand}")
 
             gt, qv = (None, None), None
             if singleSample:
@@ -466,6 +478,10 @@ for var in vcfs[-1].fetch():  # Add the unmatched vars for the last one
     # For index in lists, etc.
     uid = f"{sample}_{var.id}"
 
+    sampleN = len(list(vcf.header.samples))
+    hasGT = "GT" in vcf.header.formats.keys()
+    hasQV = "QV" in vcf.header.formats.keys()
+
     if var.info["SVTYPE"] != "INS":
         continue
 
@@ -508,7 +524,7 @@ for var in vcfs[-1].fetch():  # Add the unmatched vars for the last one
     result = {
         "info": dict([
             ("SUPP", 1),
-            ("SUPP_VEC", replaceChar("0" * len(sampleList), "1", i)),
+            ("SUPP_VEC", replaceChar("0" * len(sampleList), "1", i-1)),
             ("SVLEN", getInfoValue(var)),
             ("SVTYPE", var.info["SVTYPE"]),
             ("SVMETHOD", "merge.py"),
