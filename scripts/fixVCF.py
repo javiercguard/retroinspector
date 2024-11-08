@@ -17,8 +17,8 @@ for line in sys.stdin:
         if pos >= chrs[chrom]:
             print("Malformed SV discarded (POS column larger than CONTIG length)", file = sys.stderr)
             print(line, file = sys.stderr, end = '')
-        elif pos == 0:
-            print("Malformed SV discarded (POS is 0)", file = sys.stderr)
+        elif pos <= 0:
+            print(f"Malformed SV discarded (POS is {'lower than' if pos < 0 else ''} 0)", file = sys.stderr)
             print(line, file = sys.stderr, end = '')
         else:
             print(line, end = '')

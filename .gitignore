@@ -8,6 +8,7 @@ nohup*.out
 config.*.yaml
 !config.template.yaml
 !config.default.yaml
+!config.retroatlas.yaml
 !test_dataset/config.test.yaml
 submit_*.sh
 nope

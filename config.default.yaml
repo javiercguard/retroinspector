@@ -1,19 +1,23 @@
 # Genome
 referenceGenome: ""
+species: "homo_sapiens"
 
 # Paths
-# dataPath: "" 
-outputPath: "/path/to/output/dir" # Dont't include the trailing "/"
+fastq_directory: "./"
+outputPath: "./" # Dont't include the trailing "/"
 allPrefix: "template"
 
 # Parameters
+threads: 32
 mode: "full"
 minimumReadSupport: 3
-insertionDistanceLimitIntraPatient: 20
-insertionDistanceLimitInterPatient: 20
-survivorInsertionDistanceLimitIntraPatient: 10
-survivorInsertionDistanceLimitInterPatient: 500
+insertionDistanceLimitIntraPatient: 60
+insertionDistanceLimitInterPatient: 60
+survivorInsertionDistanceLimitIntraPatient: 60
+survivorInsertionDistanceLimitInterPatient: 100
+enrichmentSignificanceThreshold: 0.05
 callers: ["cuteSV", "sniffles2"]
+datasets: []
 
 # Keep certain files
 keepRds: True
