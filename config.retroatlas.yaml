@@ -1,0 +1,16 @@
+# Genome
+referenceGenome: ""
+
+# Paths
+fastq_directory: "/path/to/output/dir" # Dont't include the trailing "/"
+outputPath: "/path/to/output/dir" # Dont't include the trailing "/"
+allPrefix: "<mygroup>_<population>_<sex>"
+
+# Parameters
+minimumReadSupport: 3
+insertionDistanceLimitIntraPatient: 60
+insertionDistanceLimitInterPatient: 60
+survivorInsertionDistanceLimitIntraPatient: 60
+survivorInsertionDistanceLimitInterPatient: 100
+callers: ["cuteSV", "sniffles2"]
+keepRds: True
