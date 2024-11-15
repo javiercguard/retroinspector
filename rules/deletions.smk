@@ -75,6 +75,11 @@ rule sort_index_vcf_del:
     bcftools index {output[0]}
     """
 
+def listVcfs(wildcards):
+  return [
+      f"variants/survivor/{sample}.merged.survivor.vcf.gz" 
+        for sample in config["samples"].keys()
+      ]
 rule run_survivor_intersample:
   conda: "../env.yaml"
   log:
@@ -89,18 +94,36 @@ rule run_survivor_intersample:
         for sample in config["samples"].keys()
       ],
   output: 
+    vcfUnprocessed = f"tmp/{config['allPrefix']}.merged.survivor.vcf",
     vcf = f"variants/survivor/{config['allPrefix']}.merged.survivor.vcf.gz",
     index = f"variants/survivor/{config['allPrefix']}.merged.survivor.vcf.gz.csi",
+    uncompressedVcfs = [temp(f"tmp/survivor/{sample}.merged.survivor.vcf") 
+        for sample in config["samples"].keys()],
+    survivorList = temp("tmp/survivor_intrasample.txt")
   params:
     distance = config["survivorInsertionDistanceLimitInterPatient"],
+    # vcfs = lambda wildcards, input, output: list(list(zip(input.vcfs,output.uncompressedVcfs))),
+    vcfs = lambda wildcards, input, output: [item for row in zip(input.vcfs,output.uncompressedVcfs) for item in row],
+    # zip(
+    #   rules.run_survivor_intersample.vcfs, 
+    #   rules.run_survivor_intersample.output.uncompressedVcfs
+    #   ),
+    fixScript = str(workflow.basedir) + "/scripts/fixVCF.py",
   shell:
     """
-    surpyvor merge --variants {input.vcfs} \
-      -d {params.distance} \
-      -c 1 \
-      -l 1 \
-      -o {output.vcf} 2> {log}; \
-    bcftools index {output.vcf} 2>> {log}
+    truncate -s 0 "{output.survivorList}"
+    files=({params.vcfs})
+    for (( i=0; i<${{#files[@]}} ; i+=2 )) ; do
+      uncompressedVcf=${{files[i+1]}}
+      vcf=${{files[i]}}
+      echo "$uncompressedVcf" "$vcf"
+      bcftools view -O v -o "$uncompressedVcf" "$vcf"
+      echo "$uncompressedVcf" >> {output.survivorList}
+    done
+    SURVIVOR merge "{output.survivorList}" "{params.distance}" 1 1 -1 -1 1 "{output.vcfUnprocessed}" 2>> {log}
+    cat "{output.vcfUnprocessed}" | python "{params.fixScript}" 2> {log} | \
+    bcftools sort -O z -o "{output.vcf}" 2>> {log}
+    bcftools index "{output.vcf}" 2>> {log}
     """
 
 rule get_deletions:
