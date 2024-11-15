@@ -6,7 +6,7 @@ from pprint import pformat
 fastqDir = ''
 if os.path.exists(config["outputPath"]+"/fastq"):
     fastqDir = config["outputPath"]+"/fastq" 
-if "fastq_directory" in config.keys() and config["fastq_directory"]:
+if "fastq_directory" in config.keys() and config["fastq_directory"] and not config["samples"]:
     fastqDir = config["fastq_directory"]
 if fastqDir:
     samples = [x for x in os.listdir(fastqDir) if x.endswith(".fastq") or x.endswith(".fastq.gz")]
