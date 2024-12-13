@@ -11,6 +11,7 @@ config.*.yaml
 !config.retroatlas.yaml
 !test_dataset/config.test.yaml
 submit_*.sh
+*.slurm
 nope
 scripts/*2.py
 scripts/*2.Rmd
