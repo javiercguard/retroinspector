@@ -9,6 +9,7 @@ allPrefix: "template"
 
 # Parameters
 threads: 32
+mode: "full"
 minimumReadSupport: 3
 insertionDistanceLimitIntraPatient: 60
 insertionDistanceLimitInterPatient: 60

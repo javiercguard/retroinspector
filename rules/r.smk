@@ -26,6 +26,7 @@ rule analysis_preparatory:
     meDeletionsMin3 = conditionalTemp(f"rds/meDeletionsMin3.{config['allPrefix']}.rds"),
   params:
     samples = list(config["samples"].keys()),
+    re = config["minimumReadSupport"],
   script:
     "../scripts/analysisPreparatory.R"
 

@@ -32,11 +32,15 @@ workdir: config['outputPath']
 config["minimumReadSupport"]: int(config["minimumReadSupport"])
 
 def init():
-    result = [f"reports/{x}_vs_{y}.html" for x, y in config["comparisons"]] + \
-    [f"reports/report.{config['allPrefix']}.html",
-    f"variants/{config['allPrefix']}.te.vcf.gz",
-    f"variants/{config['allPrefix']}.te.lax.vcf.gz"]
-
+    result = [
+        f"variants/{config['allPrefix']}.te.vcf.gz",
+        f"variants/{config['allPrefix']}.te.lax.vcf.gz",
+    ]
+    if config["mode"] == "full":
+        result += [f"reports/{x}_vs_{y}.html" for x, y in config["comparisons"]] + \
+        [
+            f"reports/report.{config['allPrefix']}.html",
+        ]
     return result
 
 rule all:

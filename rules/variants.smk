@@ -153,8 +153,10 @@ rule run_cutesv:
     bam = "alns/{sample}.bam",
     bai = "alns/{sample}.bam.bai"
   output:
-    temp(directory("tmp/cutesv/{sample}")),
+    # temp(directory("tmp/cutesv/{sample}")),
+    directory("tmp/cutesv/{sample}"),
     temp("tmp/cutesv/{sample}/{sample}.cutesv.withseq.vcf"),
+    "tmp/cutesv/{sample}/{sample}.cutesv.unproc.vcf",
   shell:
     """
     cuteSV -t {threads} \
@@ -162,6 +164,13 @@ rule run_cutesv:
     --report_readid  --diff_ratio_merging_INS 0.3 \
     --max_cluster_bias_DEL 100 --diff_ratio_merging_DEL 0.3 \
     {input.bam} {input.genome} {output[1]} {output[0]} 2> {log}
+    cat {output[1]} 2> {log} | \
+    gawk -v 'OFS=\\t' \
+    '{{if (substr($0, 1, 1) == "#") {{print}} \
+    else {{\
+      match($8, /SVTYPE=([^;]+)/, a); \
+      if (a[1] == "INS" || a[1] == "BND") {{print}} 
+      else {{$5="<"a[1]">";$4="N";print}} }} }}' 2>> {log} > {output[2]}
     """
 
 rule process_cutesv:
@@ -169,7 +178,7 @@ rule process_cutesv:
   log:
     "logs/cutesv/{sample}.process.log"
   input:
-    "tmp/cutesv/{sample}/{sample}.cutesv.withseq.vcf",
+    "tmp/cutesv/{sample}/{sample}.cutesv.unproc.vcf",
     "tmp/cutesv/{sample}",
   output:
     "variants/cutesv/{sample}.cutesv.vcf.gz",
@@ -180,12 +189,6 @@ rule process_cutesv:
   shell:
     """
     cat {input[0]} 2> {log} | \
-    gawk -v 'OFS=\\t' \
-    '{{if (substr($0, 1, 1) == "#") {{print}} \
-    else {{\
-      match($8, /SVTYPE=([^;]+)/, a); \
-      if (a[1] == "INS" || a[1] == "BND") {{print}} 
-      else {{$5="<"a[1]">";$4="N";print}} }} }}' 2>> {log} | \
     gawk -v 'OFS=\\t' '{{if (substr($0, 1, 1) == "#") {{print}} else {{ match($8, /RE=([0-9]+)/, a); if (a[1] >= {params.support}) {{print}} }} }}' 2>> {log} | \
     python {params.fixScript} 2>> {log} | \
     bcftools sort -O z -o {output[0]} 2>> {log};

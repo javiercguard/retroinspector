@@ -24,8 +24,9 @@ class2 = c("DNA") # Class II elements
 # deletionsBed = readRDS(snakemake@input[["deletionsBedRds"]])
 # insertionCoverageFiles = snakemake@input[["insertionBedFiles"]]
 insertionsTable = readRDS(snakemake@input[["insertionsTable"]])
-annotatedInsertionsMin3 = readRDS(snakemake@input[["annotatedInsertionsMin3"]])
 samples = snakemake@params[["samples"]]
+if (snakemake@config[["mode"]] == "full") {
+annotatedInsertionsMin3 = readRDS(snakemake@input[["annotatedInsertionsMin3"]])
 
 # seqids = insertionsBed[order(seqId)]$seqId
 # print(paste0("files: ", insertionCoverageFiles))
@@ -124,6 +125,7 @@ genes = genes[, .(
 ), by = annot.symbol][order(-effectStrict)]
 print("Finished gene processing")
 # ----
+}
 
 roi = annotatedInsertionsMin3[repeat.class %in% c("Retroposon", "SINE", "LINE", "DNA", "LTR") & SUPP_trusty > 0 & repeat.percentage >= 0.85] # repeats of interest for the article
 
