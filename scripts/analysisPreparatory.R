@@ -110,7 +110,7 @@ for (col in repeatMaskerTable %>% colnames() %>%
 # Take the DR columns, create a bool vector with DR >=3, make it numeric (1 or 0), assign as column
 # this creates a column with the lax criterion
 # stored as numeric for addition
-repeatMaskerTable[, SUPP_VEC_min3 := apply(.SD, 2, `>=`, y = 3) %>% apply(., 2, as.integer) %>% apply(., 1, paste0, collapse = ""), .SDcols = grep(pattern = "_DR$", colnames(repeatMaskerTable))]
+repeatMaskerTable[, SUPP_VEC_min3 := apply(.SD, 2, `>=`, y = snakemake@params[["re"]]) %>% apply(., 2, as.integer) %>% apply(., 1, paste0, collapse = ""), .SDcols = grep(pattern = "_DR$", colnames(repeatMaskerTable))]
 repeatMaskerTable[, SUPP_min3 := stri_count_fixed(SUPP_VEC_min3, "1")] # Count SUPPORT with the min3 criteria
 
 # Initialize the column with only the two callers criteria
