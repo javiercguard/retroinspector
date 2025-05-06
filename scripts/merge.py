@@ -4,7 +4,7 @@ from math import floor, ceil
 from pprint import pp
 from pysam import VariantFile
 from collections import namedtuple
-from fuzzywuzzy import fuzz as fz
+from rapidfuzz import fuzz as fz
 import sys
 import argparse
 import re, traceback
@@ -47,7 +47,7 @@ def globAlign(seq1, seq2):
     Globally align 2 sequences without gap penalties.
     str, str -> [namedtuple])
     """
-    r = aln(score=fz.ratio(seq1, seq2))
+    r = aln(score=round(fz.ratio(seq1, seq2)))
     return r
 
 
