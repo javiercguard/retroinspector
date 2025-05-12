@@ -1,6 +1,6 @@
-RetroInspector is a pipeline to detect and annotate TE insertions and deletions on human genomes sequenced by nanopore sequencing. It has been published on [TBA].
+RetroInspector is a pipeline to detect and annotate TE insertions and deletions on human genomes sequenced by nanopore sequencing. It has been published on _[Advanced analysis of retrotransposon variation in the human genome with nanopore sequencing using RetroInspector](https://www.nature.com/articles/s41598-025-98847-7)_.
 
-Please cite this article if you use it.
+Please cite the article if you use it.
 
 # Usage
 
